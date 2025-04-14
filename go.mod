@@ -1,4 +1,4 @@
-module github.com/msepp/my-hours-cli
+module github.com/msepp/myhours
 
 go 1.24.1
 

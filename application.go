@@ -8,8 +8,8 @@ import (
 
 	"github.com/charmbracelet/bubbles/help"
 	"github.com/charmbracelet/bubbles/key"
-	"github.com/charmbracelet/bubbles/stopwatch"
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/msepp/myhours/stopwatch"
 )
 
 // Application is the myhours application handle / model. Implements the application
@@ -31,6 +31,7 @@ type keymap struct {
 }
 
 func (m Application) Init() tea.Cmd {
+	m.stopwatch.Init()
 	return nil
 }
 
@@ -65,7 +66,14 @@ func (m Application) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case key.Matches(msg, m.keymap.reset):
 			return m, m.stopwatch.Reset()
 		case key.Matches(msg, m.keymap.start, m.keymap.stop):
-
+			if m.stopwatch.Running() {
+				m.stopwatch.Stop()
+				t0 := m.stopwatch.Since()
+				t1 := t0.Add(m.stopwatch.Elapsed())
+				if err := insertRecord(m.db, t0, t1, 2, "temporary notes"); err != nil {
+					m.l.Error("failed to store record", slog.String("error", err.Error()))
+				}
+			}
 			m.keymap.stop.SetEnabled(!m.stopwatch.Running())
 			m.keymap.start.SetEnabled(m.stopwatch.Running())
 			return m, m.stopwatch.Toggle()
@@ -82,7 +90,7 @@ func Run(db *sql.DB, options ...Option) error {
 	appModel := Application{
 		db:        db,
 		l:         slog.New(slog.DiscardHandler),
-		stopwatch: stopwatch.NewWithInterval(time.Millisecond),
+		stopwatch: stopwatch.NewWithInterval(time.Millisecond * 100),
 		keymap: keymap{
 			start: key.NewBinding(
 				key.WithKeys("s"),

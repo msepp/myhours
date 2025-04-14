@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"time"
 )
 
 //go:embed schema/default.db
@@ -41,4 +42,17 @@ func NewSQLiteDatabase(dbFile string) (*sql.DB, error) {
 		return nil, fmt.Errorf("open database: %w", err)
 	}
 	return db, nil
+}
+
+func insertRecord(db *sql.DB, start, end time.Time, category int, notes string) error {
+	_, err := db.Exec("INSERT INTO records (start, end, duration, category, notes) VALUES ($1, $2, $3, $4, $5)",
+		start.In(time.UTC).Format(time.RFC3339Nano),
+		end.In(time.UTC).Format(time.RFC3339Nano),
+		end.Sub(start).String(),
+		category,
+		notes)
+	if err != nil {
+		return fmt.Errorf("db.Exec: %w", err)
+	}
+	return nil
 }

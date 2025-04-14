@@ -7,7 +7,7 @@ import (
 	"os"
 	"path"
 
-	myhours "github.com/msepp/my-hours-cli"
+	"github.com/msepp/myhours"
 
 	_ "github.com/glebarez/go-sqlite"
 )
