@@ -7,7 +7,7 @@ CREATE TABLE IF NOT EXISTS categories (
 -- records of time spent.
 CREATE TABLE IF NOT EXISTS records (
                                        id       INTEGER PRIMARY KEY,
-                                       start    VARCHAR(35)      NOT NULL,
+                                       start    VARCHAR(35) NOT NULL,
                                        end      VARCHAR(35),
                                        duration VARCHAR(35),
                                        category UNSIGNED INTEGER NOT NULL REFERENCES categories(id),
@@ -28,5 +28,5 @@ INSERT INTO categories (id, name) VALUES
                                       (3, 'Personal')
 ON CONFLICT DO NOTHING;
 
--- Insert default configration values
+-- Insert default configuration values
 INSERT INTO configuration (key, value) VALUES ('default_category', '2');

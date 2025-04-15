@@ -35,6 +35,7 @@ func main() {
 	logger.Info("database initialized", slog.String("database", dbFile))
 	// Run the application with given database
 	if err = myhours.Run(db, myhours.UseLogger(logger)); err != nil {
+		logger.Error("run error", slog.String("error", err.Error()))
 		os.Exit(1)
 	}
 }

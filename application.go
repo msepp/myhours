@@ -3,6 +3,7 @@ package myhours
 import (
 	"database/sql"
 	"fmt"
+	"log"
 	"log/slog"
 	"strconv"
 	"strings"
@@ -23,17 +24,18 @@ var baseStyle = lipgloss.NewStyle().
 // Application is the myhours application handle / model. Implements the application
 // logic for time tracking.
 type Application struct {
-	wWidth    int
-	wHeight   int
-	tabs      []string
-	activeTab int
-	l         *slog.Logger
-	db        *sql.DB
-	stopwatch stopwatch.Model
-	table     *table.Table
-	keymap    keymap
-	help      help.Model
-	quitting  bool
+	wWidth         int
+	wHeight        int
+	tabs           []string
+	activeTab      int
+	activeRecordID int64
+	l              *slog.Logger
+	db             *sql.DB
+	stopwatch      stopwatch.Model
+	table          *table.Table
+	keymap         keymap
+	help           help.Model
+	quitting       bool
 }
 
 type keymap struct {
@@ -93,15 +95,24 @@ func (app Application) helpView() string {
 		app.keymap.stop,
 		app.keymap.reset,
 		app.keymap.quit,
+		app.keymap.nextTab,
+		app.keymap.prevTab,
 	})
+}
+
+type ReHydrateMsg struct {
+	RecordID int64
+	Since    time.Time
 }
 
 func (app Application) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
+	case ReHydrateMsg:
+		app.activeRecordID = msg.RecordID
+		return app, app.stopwatch.StartFrom(msg.Since)
 	case tea.WindowSizeMsg:
 		app.wWidth = msg.Width
 		app.wHeight = msg.Height
-
 	case tea.KeyMsg:
 		switch {
 		case key.Matches(msg, app.keymap.quit):
@@ -109,50 +120,55 @@ func (app Application) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return app, tea.Quit
 		case key.Matches(msg, app.keymap.nextTab):
 			app.activeTab = min(app.activeTab+1, len(app.tabs)-1)
-			if app.activeTab == 1 {
-				var rows [][]string
-				for _, w := range recordsAsWeeks(app.getRecords()) {
-					for _, d := range w.Days {
-						notes := "--"
-						if len(d.Notes) > 0 {
-							notes = "!"
-						}
-						rows = append(rows, []string{
-							d.Date,
-							"W" + strconv.Itoa(w.WeekNo),
-							d.WeekDay.String()[:3],
-							d.Total.Truncate(time.Second).String(),
-							notes,
-						})
+			var rows [][]string
+			for _, w := range recordsAsWeeks(app.getRecords()) {
+				for _, d := range w.Days {
+					notes := "--"
+					if len(d.Notes) > 0 {
+						notes = "!"
 					}
 					rows = append(rows, []string{
-						strconv.Itoa(w.Year),
+						d.Date,
 						"W" + strconv.Itoa(w.WeekNo),
-						"",
-						w.Total.Truncate(time.Second).String(),
-						"",
+						d.WeekDay.String()[:3],
+						d.Total.Truncate(time.Second).String(),
+						notes,
 					})
 				}
-				app.table.ClearRows().Rows(rows...)
+				rows = append(rows, []string{
+					strconv.Itoa(w.Year),
+					"W" + strconv.Itoa(w.WeekNo),
+					"",
+					w.Total.Truncate(time.Second).String(),
+					"",
+				})
 			}
+			app.table.ClearRows().Rows(rows...)
 			return app, nil
 		case key.Matches(msg, app.keymap.prevTab):
 			app.activeTab = max(app.activeTab-1, 0)
 			return app, nil
 		case key.Matches(msg, app.keymap.reset):
-			return app, app.stopwatch.Reset()
+			return app, app.stopwatch.Reset(true)
 		case key.Matches(msg, app.keymap.start, app.keymap.stop):
-			if app.stopwatch.Running() {
-				app.stopwatch.Stop()
-				t0 := app.stopwatch.Since()
-				t1 := t0.Add(app.stopwatch.Elapsed())
-				if err := app.insertRecord(t0, t1, 2, "temporary notes"); err != nil {
-					app.l.Error("failed to store record", slog.String("error", err.Error()))
-				}
-			}
 			app.keymap.stop.SetEnabled(!app.stopwatch.Running())
 			app.keymap.start.SetEnabled(app.stopwatch.Running())
-			return app, app.stopwatch.Toggle()
+			switch app.stopwatch.Running() {
+			case false:
+				start := time.Now()
+				var err error
+				if app.activeRecordID, err = app.startRecord(start, 2, ""); err != nil {
+					app.l.Error("failed to store record", slog.String("error", err.Error()))
+				}
+				return app, app.stopwatch.StartFrom(start)
+			case true:
+				now := time.Now()
+				if err := app.finishRecord(app.activeRecordID, app.stopwatch.Since(), now, "fake notes"); err != nil {
+					app.l.Error("failed to store record", slog.String("error", err.Error()))
+				}
+				app.activeRecordID = 0
+				return app, app.stopwatch.Reset(false)
+			}
 		}
 	}
 	var cmd tea.Cmd
@@ -192,7 +208,6 @@ func Run(db *sql.DB, options ...Option) error {
 			}
 			return s
 		})
-
 	appModel := Application{
 		tabs:      []string{"Active task", "Reporting"},
 		db:        db,
@@ -231,8 +246,21 @@ func Run(db *sql.DB, options ...Option) error {
 	for _, opt := range options {
 		opt(&appModel)
 	}
+	// get partial record if one exists, this allows continuing tracking time
+	// from where the timer left.
+	partial, err := appModel.partialRecord()
+	if err != nil {
+		return fmt.Errorf("partialRecord: %w", err)
+	}
 	// boot-up the bubbletea runtime with our application model.
-	if _, err := tea.NewProgram(appModel, tea.WithAltScreen()).Run(); err != nil {
+	prog := tea.NewProgram(appModel, tea.WithAltScreen())
+	if partial != nil {
+		go func() {
+			log.Printf("%v", partial)
+			prog.Send(ReHydrateMsg{RecordID: partial.ID, Since: partial.Start})
+		}()
+	}
+	if _, err = prog.Run(); err != nil {
 		return fmt.Errorf("bubbletea.NewProgram().Run(): %w", err)
 	}
 	return nil

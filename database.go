@@ -45,20 +45,50 @@ func NewSQLiteDatabase(dbFile string) (*sql.DB, error) {
 	return db, nil
 }
 
-func (app Application) insertRecord(start, end time.Time, category int, notes string) error {
-	_, err := app.db.Exec(`INSERT INTO records ("start", "end", "duration", "category", "notes") VALUES ($1, $2, $3, $4, $5)`,
+func (app Application) startRecord(start time.Time, category int, notes string) (int64, error) {
+	res, err := app.db.Exec(`INSERT INTO records ("start", "category", "notes") VALUES ($1, $2, $3) RETURNING id`,
+		start.In(time.UTC).Format(time.RFC3339Nano),
+		category,
+		notes,
+	)
+	if err != nil {
+		return 0, fmt.Errorf("db.Exec: %w", err)
+	}
+	var id int64
+	if id, err = res.LastInsertId(); err != nil {
+		return 0, fmt.Errorf("db.LastInsertId: %w", err)
+	}
+	return id, nil
+}
+
+func (app Application) finishRecord(id int64, start, end time.Time, notes string) error {
+	_, err := app.db.Exec(`UPDATE records SET "start"=$2, "end"=$3, "duration"=$4, "notes"=$5 WHERE "id"=$1`,
+		id,
 		start.In(time.UTC).Format(time.RFC3339Nano),
 		end.In(time.UTC).Format(time.RFC3339Nano),
 		end.Sub(start).String(),
-		category,
-		notes)
+		notes,
+	)
 	if err != nil {
 		return fmt.Errorf("db.Exec: %w", err)
 	}
 	return nil
 }
 
+func (app Application) partialRecord() (*dbRecord, error) {
+	res := app.db.QueryRow(`SELECT "id", "start", "end", "duration", "notes" FROM records WHERE "end" IS NULL ORDER BY id DESC LIMIT 1`)
+	record, err := scanDBRecordRow(res)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, nil
+		}
+		return nil, fmt.Errorf("scanDBRecordRow: %w", err)
+	}
+	return &record, nil
+}
+
 type dbRecord struct {
+	ID       int64
 	Start    time.Time
 	End      time.Time
 	Duration time.Duration
@@ -67,34 +97,49 @@ type dbRecord struct {
 }
 
 func (app Application) getRecords() []dbRecord {
-	res, err := app.db.Query(`SELECT "start", "end", "duration", "notes" FROM records`)
+	res, err := app.db.Query(`SELECT "id", "start", "end", "duration", "notes" FROM records`)
 	if err != nil {
 		app.l.Error("failed to query database", slog.String("error", err.Error()))
 		return nil
 	}
 	var records []dbRecord
 	for res.Next() {
-		var start, end, duration, notes string
-		if err = res.Scan(&start, &end, &duration, &notes); err != nil {
-			app.l.Error("failed to scan", slog.String("error", err.Error()))
-			return nil
-		}
-		record := dbRecord{Notes: notes}
-		if record.Start, err = time.Parse(time.RFC3339Nano, start); err != nil {
-			app.l.Error("failed to parse record start time, skipping", slog.String("error", err.Error()))
-			continue
-		}
-		if record.End, err = time.Parse(time.RFC3339Nano, end); err != nil {
-			app.l.Error("failed to parse record end time, skipping", slog.String("error", err.Error()))
-			continue
-		}
-		if record.Duration, err = time.ParseDuration(duration); err != nil {
-			app.l.Error("failed to parse record duration, skipping", slog.String("error", err.Error()))
+		var record dbRecord
+		if record, err = scanDBRecordRow(res); err != nil {
+			err = fmt.Errorf("scanDBRecordRow: %w", err)
+			app.l.Error("failed to parse record", slog.String("error", err.Error()))
 			continue
 		}
 		records = append(records, record)
 	}
 	return records
+}
+
+func scanDBRecordRow(row interface{ Scan(dst ...any) error }) (dbRecord, error) {
+	var (
+		id                   int64
+		start                string
+		end, duration, notes *string
+	)
+	if err := row.Scan(&id, &start, &end, &duration, &notes); err != nil {
+		return dbRecord{}, fmt.Errorf("row.Scan: %w", err)
+	}
+	record := dbRecord{ID: id, Notes: Val(notes)}
+	var err error
+	if record.Start, err = time.Parse(time.RFC3339Nano, start); err != nil {
+		return dbRecord{}, fmt.Errorf("time.Parse(start): %w", err)
+	}
+	if end != nil {
+		if record.End, err = time.Parse(time.RFC3339Nano, *end); err != nil {
+			return dbRecord{}, fmt.Errorf("time.Parse(end): %w", err)
+		}
+	}
+	if duration != nil {
+		if record.Duration, err = time.ParseDuration(*duration); err != nil {
+			return dbRecord{}, fmt.Errorf("time.ParseDuration(duration): %w", err)
+		}
+	}
+	return record, nil
 }
 
 type day struct {

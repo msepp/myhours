@@ -43,6 +43,8 @@ type StopMsg struct {
 // ResetMsg is sent when the stopwatch should reset.
 type ResetMsg struct {
 	ID int
+	// Start timer immediately after reset.
+	Start bool
 }
 
 // Model for the stopwatch component.
@@ -111,9 +113,9 @@ func (m Model) Toggle() tea.Cmd {
 }
 
 // Reset resets the stopwatch to 0.
-func (m Model) Reset() tea.Cmd {
+func (m Model) Reset(restart bool) tea.Cmd {
 	return func() tea.Msg {
-		return ResetMsg{ID: m.id}
+		return ResetMsg{ID: m.id, Start: restart}
 	}
 }
 
@@ -144,6 +146,7 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 		}
 		m.t0 = time.Now()
 		m.d = 0
+		m.running = val.Start
 		return m, nil
 	case TickMsg:
 		if !m.running || val.ID != m.id {
@@ -176,12 +179,17 @@ func (m Model) Since() time.Time {
 // View of the timer component.
 func (m Model) View() string {
 	var doc strings.Builder
+	view := lipgloss.NewStyle().Border(lipgloss.DoubleBorder()).Padding(1, 1).Width(30)
 	bold := lipgloss.NewStyle().Bold(true)
-	doc.WriteString(bold.Render("Started: "))
-	doc.WriteString(m.t0.Format("2006-01-02 15:04:05\n"))
-	doc.WriteString(bold.Render("Duration: "))
+	doc.WriteString(bold.Render("Elapsed: "))
 	doc.WriteString(m.d.Truncate(time.Second).String())
-	return doc.String()
+	doc.WriteString(bold.Render("\nSince:   "))
+	if m.t0.IsZero() {
+		doc.WriteString("–")
+	} else {
+		doc.WriteString(m.t0.Format("2006-01-02 15:04:05"))
+	}
+	return view.Render(doc.String())
 }
 
 func tick(id int, tag int, d time.Duration) tea.Cmd {
