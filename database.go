@@ -45,6 +45,28 @@ func NewSQLiteDatabase(dbFile string) (*sql.DB, error) {
 	return db, nil
 }
 
+// ImportRecord allows inserting records into the given database directly without
+// going through the application.
+//
+// Can be used for example to bring in data from other time keeping systems.
+func ImportRecord(db *sql.Tx, start time.Time, duration time.Duration, category int, notes string) (int64, error) {
+	res, err := db.Exec(`INSERT INTO records ("start", "end", "duration", "category", "notes") VALUES ($1, $2, $3, $4, $5) RETURNING id`,
+		start.In(time.UTC).Format(time.RFC3339Nano),
+		start.Add(duration).Format(time.RFC3339Nano),
+		duration.String(),
+		category,
+		PtrNonZero(notes),
+	)
+	if err != nil {
+		return 0, fmt.Errorf("db.Exec: %w", err)
+	}
+	var id int64
+	if id, err = res.LastInsertId(); err != nil {
+		return 0, fmt.Errorf("db.LastInsertId: %w", err)
+	}
+	return id, nil
+}
+
 func (app Application) startRecord(start time.Time, category int, notes string) (int64, error) {
 	res, err := app.db.Exec(`INSERT INTO records ("start", "category", "notes") VALUES ($1, $2, $3) RETURNING id`,
 		start.In(time.UTC).Format(time.RFC3339Nano),
@@ -67,7 +89,7 @@ func (app Application) finishRecord(id int64, start, end time.Time, notes string
 		start.In(time.UTC).Format(time.RFC3339Nano),
 		end.In(time.UTC).Format(time.RFC3339Nano),
 		end.Sub(start).String(),
-		notes,
+		PtrNonZero(notes),
 	)
 	if err != nil {
 		return fmt.Errorf("db.Exec: %w", err)
@@ -96,8 +118,12 @@ type dbRecord struct {
 	Notes    string
 }
 
-func (app Application) getRecords() []dbRecord {
-	res, err := app.db.Query(`SELECT "id", "start", "end", "duration", "notes" FROM records`)
+func (app Application) getRecords(from, before time.Time) []dbRecord {
+	res, err := app.db.Query(
+		`SELECT "id", "start", "end", "duration", "notes" FROM records WHERE "start" > $1 AND "end" < $2 ORDER BY start ASC`,
+		from.In(time.UTC).Format(time.RFC3339Nano),
+		before.In(time.UTC).Format(time.RFC3339Nano),
+	)
 	if err != nil {
 		app.l.Error("failed to query database", slog.String("error", err.Error()))
 		return nil

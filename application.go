@@ -73,7 +73,7 @@ func (app Application) View() string {
 	switch app.activeTab {
 	case 0:
 		tabContent = lipgloss.NewStyle().Bold(true).Render(app.stopwatch.View())
-	case 1:
+	case 1, 2, 3:
 		tw := app.wWidth - windowStyle.GetHorizontalFrameSize()
 		if tw > 80 {
 			tw = 80
@@ -119,35 +119,13 @@ func (app Application) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			app.quitting = true
 			return app, tea.Quit
 		case key.Matches(msg, app.keymap.nextTab):
+			// TODO: pause stopwatch.
 			app.activeTab = min(app.activeTab+1, len(app.tabs)-1)
-			var rows [][]string
-			for _, w := range recordsAsWeeks(app.getRecords()) {
-				for _, d := range w.Days {
-					notes := "--"
-					if len(d.Notes) > 0 {
-						notes = "!"
-					}
-					rows = append(rows, []string{
-						d.Date,
-						"W" + strconv.Itoa(w.WeekNo),
-						d.WeekDay.String()[:3],
-						d.Total.Truncate(time.Second).String(),
-						notes,
-					})
-				}
-				rows = append(rows, []string{
-					strconv.Itoa(w.Year),
-					"W" + strconv.Itoa(w.WeekNo),
-					"",
-					w.Total.Truncate(time.Second).String(),
-					"",
-				})
-			}
-			app.table.ClearRows().Rows(rows...)
-			return app, nil
+			return app.updateTable(), nil
 		case key.Matches(msg, app.keymap.prevTab):
+			// TODO: resume stopwatch.
 			app.activeTab = max(app.activeTab-1, 0)
-			return app, nil
+			return app.updateTable(), nil
 		case key.Matches(msg, app.keymap.reset):
 			return app, app.stopwatch.Reset(true)
 		case key.Matches(msg, app.keymap.start, app.keymap.stop):
@@ -176,10 +154,82 @@ func (app Application) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	return app, cmd
 }
 
+func (app Application) updateTable() Application {
+	var records []dbRecord
+	switch app.activeTab {
+	case 1:
+		records = app.getRecords(currentWeekFilter())
+	case 2:
+		records = app.getRecords(currentMonthFilter())
+	case 3:
+		records = app.getRecords(currentYearFilter())
+	}
+	var rows [][]string
+	for _, w := range recordsAsWeeks(records) {
+		for _, d := range w.Days {
+			notes := "--"
+			if len(d.Notes) > 0 {
+				notes = "!"
+			}
+			rows = append(rows, []string{
+				d.Date,
+				"W" + strconv.Itoa(w.WeekNo),
+				d.WeekDay.String()[:3],
+				d.Total.Truncate(time.Second).String(),
+				notes,
+			})
+		}
+		rows = append(rows, []string{
+			strconv.Itoa(w.Year),
+			"W" + strconv.Itoa(w.WeekNo),
+			"",
+			w.Total.Truncate(time.Second).String(),
+			"",
+		})
+	}
+	app.table = app.table.ClearRows().Rows(rows...)
+	return app
+}
+
 func tabBorderWithBottom(middle string) lipgloss.Border {
 	border := lipgloss.Border{}
 	border.Bottom = middle
 	return border
+}
+
+func currentWeekFilter() (time.Time, time.Time) {
+	now := time.Now()
+	wd := int(now.Weekday())
+	if wd == 0 {
+		wd = 7
+	}
+	wd--
+	y, m, d := now.Date()
+	base := time.Date(y, m, d, 0, 0, 0, 0, time.Local)
+	switch wd {
+	case 0:
+		return base, base.AddDate(0, 0, 7)
+	case 6:
+		return base.AddDate(0, 0, -6), base.AddDate(0, 0, 1)
+	default:
+		return base.AddDate(0, 0, -1*wd), base.AddDate(0, 0, 7-wd)
+	}
+}
+
+func currentMonthFilter() (time.Time, time.Time) {
+	now := time.Now()
+	y, m, _ := now.Date()
+	from := time.Date(y, m, 1, 0, 0, 0, 0, time.Local)
+	before := time.Date(y, m+1, 1, 0, 0, 0, 0, time.Local)
+	return from, before
+}
+
+func currentYearFilter() (time.Time, time.Time) {
+	now := time.Now()
+	y, _, _ := now.Date()
+	from := time.Date(y, 1, 1, 0, 0, 0, 0, time.Local)
+	before := time.Date(y+1, 1, 1, 0, 0, 0, 0, time.Local)
+	return from, before
 }
 
 var (
@@ -209,7 +259,7 @@ func Run(db *sql.DB, options ...Option) error {
 			return s
 		})
 	appModel := Application{
-		tabs:      []string{"Active task", "Reporting"},
+		tabs:      []string{"Active task", "Report: week", "Report: month", "Report: year"},
 		db:        db,
 		l:         slog.New(slog.DiscardHandler),
 		table:     t,
