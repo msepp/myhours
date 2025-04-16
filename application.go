@@ -205,15 +205,20 @@ func (app Application) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 func (app Application) updateTable() Application {
-	var records []dbRecord
+	var rows [][]string
 	switch app.activeTab {
 	case 1:
-		records = app.getRecords(weekFilter(app.offsetWeek))
+		rows = rowsByWeek(app.getRecords(weekFilter(app.offsetWeek)))
 	case 2:
-		records = app.getRecords(monthFilter(app.offsetMonth))
+		rows = rowsByMonth(app.getRecords(monthFilter(app.offsetMonth)))
 	case 3:
-		records = app.getRecords(yearFilter(app.offsetYear))
+		rows = rowsByYear(app.getRecords(yearFilter(app.offsetYear)))
 	}
+	app.table = app.table.ClearRows().Rows(rows...)
+	return app
+}
+
+func rowsByWeek(records []dbRecord) [][]string {
 	var rows [][]string
 	for _, w := range recordsAsWeeks(records) {
 		for _, d := range w.Days {
@@ -230,17 +235,62 @@ func (app Application) updateTable() Application {
 			})
 		}
 		rows = append(rows, []string{
-			strconv.Itoa(w.Year),
-			"W" + strconv.Itoa(w.WeekNo),
+			"Total",
+			"",
 			"",
 			w.Total.Truncate(time.Second).String(),
 			"",
 		})
 	}
-	app.table = app.table.ClearRows().Rows(rows...)
-	return app
+	return rows
+}
+func rowsByMonth(records []dbRecord) [][]string {
+	var rows [][]string
+	for _, m := range recordsAsMonths(records) {
+		for _, w := range m.Weeks {
+			fd, ld := w.DateRange()
+			rows = append(rows, []string{
+				fd + " – " + ld,
+				m.Month.String()[:3],
+				"W" + strconv.Itoa(w.WeekNo),
+				w.Total.Truncate(time.Second).String(),
+				"",
+			})
+		}
+		rows = append(rows, []string{
+			"Total",
+			"",
+			"",
+			m.Total.Truncate(time.Second).String(),
+			"",
+		})
+	}
+	return rows
 }
 
+func rowsByYear(records []dbRecord) [][]string {
+	var rows [][]string
+	for _, y := range recordsAsYears(records) {
+		for _, m := range y.Months {
+			fd, ld := m.DateRange()
+			rows = append(rows, []string{
+				fd + " – " + ld,
+				m.Month.String(),
+				"",
+				m.Total.Truncate(time.Second).String(),
+				"",
+			})
+		}
+		rows = append(rows, []string{
+			"Total",
+			"",
+			"",
+			y.Total.Truncate(time.Second).String(),
+			"",
+		})
+	}
+	return rows
+}
 func tabBorderWithBottom(middle string) lipgloss.Border {
 	border := lipgloss.Border{}
 	border.Bottom = middle
@@ -277,7 +327,7 @@ func monthFilter(offset int) (time.Time, time.Time) {
 	y, m, _ := now.Date()
 	// first day of current month, minus as many months as offset says
 	from := time.Date(y, m, 1, 0, 0, 0, 0, time.Local).AddDate(0, offset, 0)
-	before := time.Date(y, m+1, 1, 0, 0, 0, 0, time.Local)
+	before := time.Date(y, m+1, 1, 0, 0, 0, 0, time.Local).AddDate(0, offset, 0)
 	return from, before
 }
 
@@ -289,7 +339,7 @@ func yearFilter(offset int) (time.Time, time.Time) {
 	y, _, _ := now.Date()
 	// first day of current year, minus as many years as offset says
 	from := time.Date(y, 1, 1, 0, 0, 0, 0, time.Local).AddDate(offset, 0, 0)
-	before := time.Date(y+1, 1, 1, 0, 0, 0, 0, time.Local)
+	before := time.Date(y+1, 1, 1, 0, 0, 0, 0, time.Local).AddDate(0, offset, 0)
 	return from, before
 }
 

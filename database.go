@@ -244,47 +244,94 @@ func scanDBRecordRow(row interface{ Scan(dst ...any) error }) (dbRecord, error) 
 	return record, nil
 }
 
-type day struct {
+type DailyReport struct {
 	Date    string
 	WeekDay time.Weekday
+	Month   time.Month
 	Total   time.Duration
 	Notes   []string
 }
 
-type week struct {
+type WeeklyReport struct {
 	Year   int
 	WeekNo int
-	Days   []day
+	Total  time.Duration
+	Days   []DailyReport
+}
+
+func (r WeeklyReport) DateRange() (string, string) {
+	if len(r.Days) == 0 {
+		return "", ""
+	}
+	if len(r.Days) == 1 {
+		return r.Days[0].Date, r.Days[0].Date
+	}
+	return r.Days[0].Date, r.Days[len(r.Days)-1].Date
+}
+
+type MonthlyReport struct {
+	Year      int
+	Month     time.Month
+	FirstDate string
+	LastDate  string
+	Total     time.Duration
+	Weeks     []WeeklyReport
+}
+
+func (r MonthlyReport) DateRange() (string, string) {
+	if len(r.Weeks) == 0 {
+		return "", ""
+	}
+	if len(r.Weeks) == 1 {
+		return r.Weeks[0].DateRange()
+	}
+	first, _ := r.Weeks[0].DateRange()
+	_, last := r.Weeks[len(r.Weeks)-1].DateRange()
+	return first, last
+}
+
+type YearlyReport struct {
+	Year   int
+	Months []MonthlyReport
 	Total  time.Duration
 }
 
-func (w week) ISOWeekString() string {
-	return fmt.Sprintf("%04dw%02d", w.Year, w.WeekNo)
+func (r YearlyReport) DateRange() (string, string) {
+	if len(r.Months) == 0 {
+		return "", ""
+	}
+	if len(r.Months) == 1 {
+		return r.Months[0].DateRange()
+	}
+	first, _ := r.Months[0].DateRange()
+	_, last := r.Months[len(r.Months)-1].DateRange()
+	return first, last
 }
 
-func recordsAsWeeks(records []dbRecord) []week {
+func recordsAsWeeks(records []dbRecord) []WeeklyReport {
 	var (
-		weeks []week
-		cw    *week
+		weeks []WeeklyReport
+		cw    *WeeklyReport
 	)
 	for _, record := range records {
 		// show dates in local time. They are stored in UTC.
 		start := record.Start.In(time.Local)
-		year, weekNo := start.In(time.Local).ISOWeek()
+		y, weekNo := start.In(time.Local).ISOWeek()
 		wd := int(start.Weekday())
 		if wd == 0 { // Sunday is zero. Horrible.
 			wd = 7
 		}
 		wd--
-		if cw == nil || cw.Year != year || cw.WeekNo != weekNo {
-			weeks = append(weeks, week{Year: year, WeekNo: weekNo})
+		if cw == nil || cw.Year != y || cw.WeekNo != weekNo {
+			weeks = append(weeks, WeeklyReport{Year: y, WeekNo: weekNo})
 			cw = &weeks[len(weeks)-1]
 			// seed the days of the week to get a full week.
 			for i := range 7 {
 				d := start.AddDate(0, 0, -1*(wd-i))
-				cw.Days = append(cw.Days, day{
+				cw.Days = append(cw.Days, DailyReport{
 					Date:    d.Format(time.DateOnly),
 					WeekDay: d.Weekday(),
+					Month:   d.Month(),
 				})
 			}
 		}
@@ -296,4 +343,106 @@ func recordsAsWeeks(records []dbRecord) []week {
 		}
 	}
 	return weeks
+}
+
+func recordsAsMonths(records []dbRecord) []MonthlyReport {
+	var (
+		months []MonthlyReport
+		cm     *MonthlyReport
+		cw     *WeeklyReport
+	)
+	for _, r := range records {
+		start := r.Start.In(time.Local)
+		y, m, _ := start.Date()
+		if cm == nil || cm.Month != m || cm.Year != y {
+			first := time.Date(y, m, 1, 0, 0, 0, 0, time.Local)
+			last := time.Date(y, m+1, -1, 0, 0, 0, 0, time.Local)
+			months = append(months, MonthlyReport{
+				Year:      y,
+				Month:     m,
+				FirstDate: first.Format(time.DateOnly),
+				LastDate:  last.Format(time.DateOnly),
+			})
+			cm = &months[len(months)-1]
+			// create the month weeks
+			prevWeekNo := 0
+			for !first.After(last) {
+				if _, weekNo := first.ISOWeek(); prevWeekNo < weekNo {
+					prevWeekNo = weekNo
+					wr := WeeklyReport{
+						Year:   y,
+						WeekNo: weekNo,
+					}
+					// seed the days of the week to get a full week.
+					dd := first
+					_, wNo := dd.ISOWeek()
+					for wNo == weekNo && dd.Month() == m {
+						wr.Days = append(wr.Days, DailyReport{
+							Date:    dd.Format(time.DateOnly),
+							WeekDay: dd.Weekday(),
+							Month:   dd.Month(),
+						})
+						dd = dd.AddDate(0, 0, 1)
+						_, wNo = dd.ISOWeek()
+					}
+					cm.Weeks = append(cm.Weeks, wr)
+				}
+				first = first.AddDate(0, 0, 1)
+			}
+			cw = nil
+		}
+		_, weekNo := r.Start.In(time.Local).ISOWeek()
+		if cw == nil || cw.WeekNo != weekNo {
+			for i, w := range cm.Weeks {
+				if w.WeekNo == weekNo {
+					cw = &cm.Weeks[i]
+				}
+			}
+			if cw == nil {
+				panic("week not set somehow!")
+			}
+		}
+		cm.Total += r.Duration
+		cw.Total += r.Duration
+		date := start.Format(time.DateOnly)
+		for i := range cw.Days {
+			if cw.Days[i].Date != date {
+				continue
+			}
+			cw.Days[i].Total += r.Duration
+			break
+		}
+		wd := start.Weekday()
+		if wd == 0 {
+			wd = 7
+		}
+		wd--
+		cw.Days[wd].Total += r.Duration
+		if r.Notes != "" {
+			cw.Days[wd].Notes = append(cw.Days[wd].Notes, r.Notes)
+		}
+	}
+	return months
+}
+
+func recordsAsYears(records []dbRecord) []YearlyReport {
+	var (
+		years []YearlyReport
+		cy    *YearlyReport
+	)
+	for _, m := range recordsAsMonths(records) {
+		if cy == nil || cy.Year != m.Year {
+			years = append(years, YearlyReport{Year: m.Year})
+			cy = &years[len(years)-1]
+			for i := range 12 {
+				cy.Months = append(cy.Months, MonthlyReport{
+					Year:  m.Year,
+					Month: time.Month(i + 1),
+				})
+			}
+		}
+		cy.Months[m.Month-1] = m
+		cy.Total += m.Total
+	}
+	return years
 }
