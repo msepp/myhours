@@ -2,6 +2,7 @@ package myhours
 
 import (
 	"log/slog"
+	"strconv"
 	"strings"
 	"time"
 
@@ -19,6 +20,7 @@ type timerView struct {
 	timer          stopwatch.Model
 	activeCategory int64
 	activeRecordID int64
+	prevRecordID   int64
 }
 
 func (view *timerView) Name() string { return "Task" }
@@ -55,6 +57,7 @@ func (view *timerView) Update(app Application, message tea.Msg) (tea.Model, tea.
 				if err := app.finishRecord(view.activeRecordID, view.timer.Since(), now, ""); err != nil {
 					app.l.Error("failed to store record", slog.String("error", err.Error()))
 				}
+				view.prevRecordID = view.activeRecordID
 				view.activeRecordID = 0
 				return app, view.timer.Stop()
 			}
@@ -72,16 +75,26 @@ func (view *timerView) View(app Application, width, _ int) string {
 		width = 40
 	}
 	elapsed := view.timer.View()
-	started := view.timer.Since().Format(time.DateTime)
+	started := view.timer.Since()
 	style := lipgloss.NewStyle().Border(lipgloss.DoubleBorder()).BorderForeground(cat.ForegroundColor()).Padding(1, 2).Width(width)
 	doc.WriteString(timerLabel.Render("Tracking:"))
 	doc.WriteString(lipgloss.NewStyle().Foreground(cat.ForegroundColor()).Render(cat.name))
 	doc.WriteString("\n")
-	doc.WriteString(timerLabel.Render("Started:"))
-	doc.WriteString(started)
-	doc.WriteString("\n")
 	doc.WriteString(timerLabel.Render("Elapsed:"))
 	doc.WriteString(elapsed)
+	doc.WriteString("\n")
+	doc.WriteString(timerLabel.Render("Started:"))
+	if !started.IsZero() {
+		doc.WriteString(started.Format(time.DateTime))
+	}
+	doc.WriteString("\n")
+	doc.WriteString(timerLabel.Render("Task ID:"))
+	switch {
+	case view.activeRecordID > 0:
+		doc.WriteString(strconv.FormatInt(view.activeRecordID, 10))
+	case view.prevRecordID > 0:
+		doc.WriteString(strconv.FormatInt(view.prevRecordID, 10))
+	}
 	return style.Render(doc.String())
 }
 

@@ -78,7 +78,7 @@ func (m Model) ID() int {
 
 // Init starts the stopwatch.
 func (m Model) Init() tea.Cmd {
-	return m.Start()
+	return nil
 }
 
 // StartFrom sets the starting time for the stopwatch to given time.Time.
@@ -160,7 +160,6 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 		m.tag++
 		return m, tick(m.id, m.tag, m.Interval)
 	}
-
 	return m, nil
 }
 
@@ -177,7 +176,7 @@ func (m Model) Since() time.Time {
 // View of the timer component.
 func (m Model) View() string {
 	if m.d == 0 {
-		return "Idle 😴"
+		return "😴 Idle..."
 	}
 	if m.running {
 		return "🕒" + m.d.Truncate(time.Second).String()
