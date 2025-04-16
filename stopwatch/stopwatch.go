@@ -185,7 +185,7 @@ func (m Model) View() string {
 	doc.WriteString(m.d.Truncate(time.Second).String())
 	doc.WriteString(bold.Render("\nSince:   "))
 	if m.t0.IsZero() {
-		doc.WriteString("–")
+		doc.WriteString("Idle 😴")
 	} else {
 		doc.WriteString(m.t0.Format("2006-01-02 15:04:05"))
 	}

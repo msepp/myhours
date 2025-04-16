@@ -8,6 +8,7 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"strconv"
 	"time"
 )
 
@@ -83,6 +84,17 @@ func (app Application) startRecord(start time.Time, category int, notes string) 
 	return id, nil
 }
 
+func (app Application) setRecordCategory(id int64, category int64) error {
+	_, err := app.db.Exec(`UPDATE records SET "category"=$2 WHERE "id"=$1`,
+		id,
+		category,
+	)
+	if err != nil {
+		return fmt.Errorf("db.Exec: %w", err)
+	}
+	return nil
+}
+
 func (app Application) finishRecord(id int64, start, end time.Time, notes string) error {
 	_, err := app.db.Exec(`UPDATE records SET "start"=$2, "end"=$3, "duration"=$4, "notes"=$5 WHERE "id"=$1`,
 		id,
@@ -98,7 +110,7 @@ func (app Application) finishRecord(id int64, start, end time.Time, notes string
 }
 
 func (app Application) partialRecord() (*dbRecord, error) {
-	res := app.db.QueryRow(`SELECT "id", "start", "end", "duration", "notes" FROM records WHERE "end" IS NULL ORDER BY id DESC LIMIT 1`)
+	res := app.db.QueryRow(`SELECT "id", "start", "end", "duration", "category", "notes" FROM records WHERE "end" IS NULL ORDER BY id DESC LIMIT 1`)
 	record, err := scanDBRecordRow(res)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
@@ -110,17 +122,79 @@ func (app Application) partialRecord() (*dbRecord, error) {
 }
 
 type dbRecord struct {
-	ID       int64
-	Start    time.Time
-	End      time.Time
-	Duration time.Duration
-	Category int
-	Notes    string
+	ID         int64
+	Start      time.Time
+	End        time.Time
+	Duration   time.Duration
+	CategoryID int64
+	Notes      string
+}
+
+type category struct {
+	id           int64
+	name         string
+	bgColorDark  string
+	fgColorDark  string
+	bgColorLight string
+	fgColorLight string
+}
+
+func (app Application) loadConfig() (AppConfig, error) {
+	rows, err := app.db.Query(`SELECT "key", "value" FROM configuration`)
+	if err != nil {
+		return AppConfig{}, fmt.Errorf("db.Query: %w", err)
+	}
+	defer rows.Close()
+	var config AppConfig
+	for rows.Next() {
+		var key, value string
+		if err = rows.Scan(&key, &value); err != nil {
+			return AppConfig{}, fmt.Errorf("rows.Scan: %w", err)
+		}
+		switch key {
+		case "default_category":
+			config.DefaultCategory, err = strconv.ParseInt(value, 10, 64)
+			if err != nil {
+				return AppConfig{}, fmt.Errorf("default_category: strconv.Atoi: %w", err)
+			}
+		default:
+			app.l.Warn("unsupported configuration key", slog.String("key", key))
+		}
+	}
+	return config, nil
+}
+
+func (app Application) updateConfig(key string, value string) error {
+	_, err := app.db.Exec(`UPDATE configuration SET "value"=$2 WHERE "key"=$1`,
+		key,
+		value,
+	)
+	if err != nil {
+		return fmt.Errorf("db.Exec: %w", err)
+	}
+	return nil
+}
+
+func (app Application) getCategories() ([]category, error) {
+	rows, err := app.db.Query(`SELECT "id", "name", "color_dark_bg", "color_dark_fg", "color_light_bg", "color_light_fg" FROM categories ORDER BY "id" ASC`)
+	if err != nil {
+		return nil, fmt.Errorf("db.Query: %w", err)
+	}
+	defer rows.Close()
+	var result []category
+	for rows.Next() {
+		var cat category
+		if err = rows.Scan(&cat.id, &cat.name, &cat.bgColorDark, &cat.fgColorDark, &cat.bgColorLight, &cat.fgColorLight); err != nil {
+			return nil, fmt.Errorf("rows.Scan: %w", err)
+		}
+		result = append(result, cat)
+	}
+	return result, nil
 }
 
 func (app Application) getRecords(from, before time.Time) []dbRecord {
 	res, err := app.db.Query(
-		`SELECT "id", "start", "end", "duration", "notes" FROM records WHERE "start" > $1 AND "end" < $2 ORDER BY start ASC`,
+		`SELECT "id", "start", "end", "duration", "category", "notes" FROM records WHERE "start" > $1 AND "end" < $2 ORDER BY start ASC`,
 		from.In(time.UTC).Format(time.RFC3339Nano),
 		before.In(time.UTC).Format(time.RFC3339Nano),
 	)
@@ -128,6 +202,7 @@ func (app Application) getRecords(from, before time.Time) []dbRecord {
 		app.l.Error("failed to query database", slog.String("error", err.Error()))
 		return nil
 	}
+	defer res.Close()
 	var records []dbRecord
 	for res.Next() {
 		var record dbRecord
@@ -146,11 +221,12 @@ func scanDBRecordRow(row interface{ Scan(dst ...any) error }) (dbRecord, error) 
 		id                   int64
 		start                string
 		end, duration, notes *string
+		categoryID           int64
 	)
-	if err := row.Scan(&id, &start, &end, &duration, &notes); err != nil {
+	if err := row.Scan(&id, &start, &end, &duration, &categoryID, &notes); err != nil {
 		return dbRecord{}, fmt.Errorf("row.Scan: %w", err)
 	}
-	record := dbRecord{ID: id, Notes: Val(notes)}
+	record := dbRecord{ID: id, CategoryID: categoryID, Notes: Val(notes)}
 	var err error
 	if record.Start, err = time.Parse(time.RFC3339Nano, start); err != nil {
 		return dbRecord{}, fmt.Errorf("time.Parse(start): %w", err)

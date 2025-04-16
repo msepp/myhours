@@ -4,5 +4,5 @@ package myhours
 type AppConfig struct {
 	// DefaultCategory is the category that is set by default work any recorded
 	// time.
-	DefaultCategory int `key:"default_category"`
+	DefaultCategory int64
 }

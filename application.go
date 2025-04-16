@@ -3,7 +3,6 @@ package myhours
 import (
 	"database/sql"
 	"fmt"
-	"log"
 	"log/slog"
 	"strconv"
 	"strings"
@@ -29,6 +28,9 @@ type Application struct {
 	tabs           []string
 	activeTab      int
 	activeRecordID int64
+	activeCategory int64
+	categories     []category
+	config         AppConfig
 	l              *slog.Logger
 	db             *sql.DB
 	stopwatch      stopwatch.Model
@@ -39,12 +41,13 @@ type Application struct {
 }
 
 type keymap struct {
-	nextTab key.Binding
-	prevTab key.Binding
-	start   key.Binding
-	stop    key.Binding
-	reset   key.Binding
-	quit    key.Binding
+	category key.Binding
+	nextTab  key.Binding
+	prevTab  key.Binding
+	start    key.Binding
+	stop     key.Binding
+	reset    key.Binding
+	quit     key.Binding
 }
 
 func (app Application) Init() tea.Cmd {
@@ -85,36 +88,68 @@ func (app Application) View() string {
 	height := app.wHeight - th - windowStyle.GetVerticalFrameSize()
 	width := app.wWidth - windowStyle.GetHorizontalFrameSize()
 	doc.WriteString(lipgloss.Place(width, height, lipgloss.Center, lipgloss.Center, tabContent))
-	doc.WriteString(app.helpView())
+	doc.WriteString("\n" + app.helpView())
 	return windowStyle.Render(doc.String())
 }
 
 func (app Application) helpView() string {
-	return "\n" + app.help.ShortHelpView([]key.Binding{
+	current := category{id: app.activeCategory, name: "unknown"}
+	for _, cat := range app.categories {
+		if cat.id == app.activeCategory {
+			current = cat
+			break
+		}
+	}
+	catStyle := lipgloss.NewStyle().
+		Background(lipgloss.AdaptiveColor{Dark: current.bgColorDark, Light: current.bgColorLight}).
+		Foreground(lipgloss.AdaptiveColor{Dark: current.fgColorDark, Light: current.fgColorLight}).Padding(0, 1)
+	return catStyle.Render(current.name) + ": " + app.help.ShortHelpView([]key.Binding{
 		app.keymap.start,
 		app.keymap.stop,
 		app.keymap.reset,
-		app.keymap.quit,
+		app.keymap.category,
 		app.keymap.nextTab,
 		app.keymap.prevTab,
+		app.keymap.quit,
 	})
 }
 
 type ReHydrateMsg struct {
 	RecordID int64
 	Since    time.Time
+	Category int64
+}
+
+type SwitchCategoryMsg struct {
+	ID int64
 }
 
 func (app Application) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case ReHydrateMsg:
 		app.activeRecordID = msg.RecordID
+		app.activeCategory = msg.Category
 		return app, app.stopwatch.StartFrom(msg.Since)
 	case tea.WindowSizeMsg:
 		app.wWidth = msg.Width
 		app.wHeight = msg.Height
 	case tea.KeyMsg:
 		switch {
+		case key.Matches(msg, app.keymap.category):
+			if app.activeCategory == 3 {
+				app.activeCategory = 1
+			} else {
+				app.activeCategory++
+			}
+			if app.activeRecordID > 0 {
+				if err := app.setRecordCategory(app.activeRecordID, app.activeCategory); err != nil {
+					app.l.Error("failed to update active record category", slog.String("error", err.Error()))
+				}
+			}
+			if err := app.updateConfig("default_category", strconv.FormatInt(app.activeCategory, 10)); err != nil {
+				app.l.Error("failed to update default category", slog.String("error", err.Error()))
+			}
+			return app, nil
 		case key.Matches(msg, app.keymap.quit):
 			app.quitting = true
 			return app, tea.Quit
@@ -258,13 +293,17 @@ func Run(db *sql.DB, options ...Option) error {
 			}
 			return s
 		})
-	appModel := Application{
-		tabs:      []string{"Active task", "Report: week", "Report: month", "Report: year"},
+	app := Application{
+		tabs:      []string{"Now", "Weeks", "Months", "Years"},
 		db:        db,
 		l:         slog.New(slog.DiscardHandler),
 		table:     t,
 		stopwatch: stopwatch.NewWithInterval(time.Millisecond * 100),
 		keymap: keymap{
+			category: key.NewBinding(
+				key.WithKeys("c"),
+				key.WithHelp("c", "category"),
+			),
 			nextTab: key.NewBinding(
 				key.WithKeys("right", "l", "n", "tab"),
 				key.WithHelp("n", "next tab"),
@@ -294,20 +333,29 @@ func Run(db *sql.DB, options ...Option) error {
 	}
 	// apply options to customize the application.
 	for _, opt := range options {
-		opt(&appModel)
+		opt(&app)
 	}
+	// fetch category options
+	var err error
+	if app.categories, err = app.getCategories(); err != nil {
+		return fmt.Errorf("load categories: %w", err)
+	}
+	// load configuration
+	if app.config, err = app.loadConfig(); err != nil {
+		return fmt.Errorf("load config: %w", err)
+	}
+	app.activeCategory = app.config.DefaultCategory
 	// get partial record if one exists, this allows continuing tracking time
 	// from where the timer left.
-	partial, err := appModel.partialRecord()
-	if err != nil {
+	var partial *dbRecord
+	if partial, err = app.partialRecord(); err != nil {
 		return fmt.Errorf("partialRecord: %w", err)
 	}
 	// boot-up the bubbletea runtime with our application model.
-	prog := tea.NewProgram(appModel, tea.WithAltScreen())
+	prog := tea.NewProgram(app, tea.WithAltScreen())
 	if partial != nil {
 		go func() {
-			log.Printf("%v", partial)
-			prog.Send(ReHydrateMsg{RecordID: partial.ID, Since: partial.Start})
+			prog.Send(ReHydrateMsg{RecordID: partial.ID, Since: partial.Start, Category: partial.CategoryID})
 		}()
 	}
 	if _, err = prog.Run(); err != nil {
