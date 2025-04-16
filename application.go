@@ -29,6 +29,9 @@ type Application struct {
 	activeTab      int
 	activeRecordID int64
 	activeCategory int64
+	offsetWeek     int
+	offsetMonth    int
+	offsetYear     int
 	categories     []category
 	config         AppConfig
 	l              *slog.Logger
@@ -41,13 +44,15 @@ type Application struct {
 }
 
 type keymap struct {
-	category key.Binding
-	nextTab  key.Binding
-	prevTab  key.Binding
-	start    key.Binding
-	stop     key.Binding
-	reset    key.Binding
-	quit     key.Binding
+	category       key.Binding
+	tabNext        key.Binding
+	tabPrev        key.Binding
+	offsetBackward key.Binding
+	offsetForward  key.Binding
+	start          key.Binding
+	stop           key.Binding
+	reset          key.Binding
+	quit           key.Binding
 }
 
 func (app Application) Init() tea.Cmd {
@@ -108,8 +113,8 @@ func (app Application) helpView() string {
 		app.keymap.stop,
 		app.keymap.reset,
 		app.keymap.category,
-		app.keymap.nextTab,
-		app.keymap.prevTab,
+		app.keymap.tabNext,
+		app.keymap.tabPrev,
 		app.keymap.quit,
 	})
 }
@@ -125,17 +130,17 @@ type SwitchCategoryMsg struct {
 }
 
 func (app Application) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
-	switch msg := msg.(type) {
+	switch v := msg.(type) {
 	case ReHydrateMsg:
-		app.activeRecordID = msg.RecordID
-		app.activeCategory = msg.Category
-		return app, app.stopwatch.StartFrom(msg.Since)
+		app.activeRecordID = v.RecordID
+		app.activeCategory = v.Category
+		return app, app.stopwatch.StartFrom(v.Since)
 	case tea.WindowSizeMsg:
-		app.wWidth = msg.Width
-		app.wHeight = msg.Height
+		app.wWidth = v.Width
+		app.wHeight = v.Height
 	case tea.KeyMsg:
 		switch {
-		case key.Matches(msg, app.keymap.category):
+		case key.Matches(v, app.keymap.category):
 			if app.activeCategory == 3 {
 				app.activeCategory = 1
 			} else {
@@ -150,20 +155,27 @@ func (app Application) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				app.l.Error("failed to update default category", slog.String("error", err.Error()))
 			}
 			return app, nil
-		case key.Matches(msg, app.keymap.quit):
-			app.quitting = true
-			return app, tea.Quit
-		case key.Matches(msg, app.keymap.nextTab):
+		case key.Matches(v, app.keymap.offsetBackward):
+			app.offsetWeek--
+			app.offsetMonth--
+			app.offsetYear--
+			return app.updateTable(), nil
+		case key.Matches(v, app.keymap.offsetForward):
+			app.offsetWeek = min(app.offsetWeek+1, 0)
+			app.offsetMonth = min(app.offsetMonth+1, 0)
+			app.offsetYear = min(app.offsetYear+1, 0)
+			return app.updateTable(), nil
+		case key.Matches(v, app.keymap.tabNext):
 			// TODO: pause stopwatch.
 			app.activeTab = min(app.activeTab+1, len(app.tabs)-1)
 			return app.updateTable(), nil
-		case key.Matches(msg, app.keymap.prevTab):
+		case key.Matches(v, app.keymap.tabPrev):
 			// TODO: resume stopwatch.
 			app.activeTab = max(app.activeTab-1, 0)
 			return app.updateTable(), nil
-		case key.Matches(msg, app.keymap.reset):
+		case key.Matches(v, app.keymap.reset):
 			return app, app.stopwatch.Reset(true)
-		case key.Matches(msg, app.keymap.start, app.keymap.stop):
+		case key.Matches(v, app.keymap.start, app.keymap.stop):
 			app.keymap.stop.SetEnabled(!app.stopwatch.Running())
 			app.keymap.start.SetEnabled(app.stopwatch.Running())
 			switch app.stopwatch.Running() {
@@ -182,6 +194,9 @@ func (app Application) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				app.activeRecordID = 0
 				return app, app.stopwatch.Reset(false)
 			}
+		case key.Matches(v, app.keymap.quit):
+			app.quitting = true
+			return app, tea.Quit
 		}
 	}
 	var cmd tea.Cmd
@@ -193,11 +208,11 @@ func (app Application) updateTable() Application {
 	var records []dbRecord
 	switch app.activeTab {
 	case 1:
-		records = app.getRecords(currentWeekFilter())
+		records = app.getRecords(weekFilter(app.offsetWeek))
 	case 2:
-		records = app.getRecords(currentMonthFilter())
+		records = app.getRecords(monthFilter(app.offsetMonth))
 	case 3:
-		records = app.getRecords(currentYearFilter())
+		records = app.getRecords(yearFilter(app.offsetYear))
 	}
 	var rows [][]string
 	for _, w := range recordsAsWeeks(records) {
@@ -232,8 +247,11 @@ func tabBorderWithBottom(middle string) lipgloss.Border {
 	return border
 }
 
-func currentWeekFilter() (time.Time, time.Time) {
-	now := time.Now()
+func weekFilter(offset int) (time.Time, time.Time) {
+	if offset > 0 {
+		offset = 0
+	}
+	now := time.Now().AddDate(0, 0, offset*7) // week is always 7 days, so this still works.
 	wd := int(now.Weekday())
 	if wd == 0 {
 		wd = 7
@@ -251,18 +269,26 @@ func currentWeekFilter() (time.Time, time.Time) {
 	}
 }
 
-func currentMonthFilter() (time.Time, time.Time) {
+func monthFilter(offset int) (time.Time, time.Time) {
+	if offset > 0 {
+		offset = 0
+	}
 	now := time.Now()
 	y, m, _ := now.Date()
-	from := time.Date(y, m, 1, 0, 0, 0, 0, time.Local)
+	// first day of current month, minus as many months as offset says
+	from := time.Date(y, m, 1, 0, 0, 0, 0, time.Local).AddDate(0, offset, 0)
 	before := time.Date(y, m+1, 1, 0, 0, 0, 0, time.Local)
 	return from, before
 }
 
-func currentYearFilter() (time.Time, time.Time) {
+func yearFilter(offset int) (time.Time, time.Time) {
+	if offset > 0 {
+		offset = 0
+	}
 	now := time.Now()
 	y, _, _ := now.Date()
-	from := time.Date(y, 1, 1, 0, 0, 0, 0, time.Local)
+	// first day of current year, minus as many years as offset says
+	from := time.Date(y, 1, 1, 0, 0, 0, 0, time.Local).AddDate(offset, 0, 0)
 	before := time.Date(y+1, 1, 1, 0, 0, 0, 0, time.Local)
 	return from, before
 }
@@ -304,13 +330,21 @@ func Run(db *sql.DB, options ...Option) error {
 				key.WithKeys("c"),
 				key.WithHelp("c", "category"),
 			),
-			nextTab: key.NewBinding(
+			tabNext: key.NewBinding(
 				key.WithKeys("right", "l", "n", "tab"),
 				key.WithHelp("n", "next tab"),
 			),
-			prevTab: key.NewBinding(
+			tabPrev: key.NewBinding(
 				key.WithKeys("left", "h", "p", "shift+tab"),
 				key.WithHelp("n", "previous tab"),
+			),
+			offsetForward: key.NewBinding(
+				key.WithKeys("down", "j"),
+				key.WithHelp("j", "next period"),
+			),
+			offsetBackward: key.NewBinding(
+				key.WithKeys("up", "k"),
+				key.WithHelp("k", "previous period"),
 			),
 			start: key.NewBinding(
 				key.WithKeys("s"),
