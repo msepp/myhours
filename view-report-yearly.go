@@ -60,7 +60,7 @@ func (view *yearlyReportView) Init(_ Application) tea.Cmd {
 	return nil
 }
 
-func (view *yearlyReportView) ShortHelpKeys(keys keymap) []key.Binding {
+func (view *yearlyReportView) HelpKeys(keys keymap) []key.Binding {
 	return []key.Binding{keys.nextPage, keys.previousPage}
 }
 
@@ -88,11 +88,10 @@ func yearRows(records []dbRecord) [][]string {
 }
 
 func yearReportStyle(r, _ int, data []string) lipgloss.Style {
-	s := lipgloss.NewStyle().Padding(0, 1)
 	if r < 0 || len(data) == 0 || data[0] == "" || data[0][0] != 'T' {
-		return s
+		return tableCellStyle
 	}
-	return s.Background(lipgloss.AdaptiveColor{Dark: "#FFF", Light: "#000"}).Foreground(lipgloss.AdaptiveColor{Dark: "#000", Light: "#FFF"})
+	return tableSumRowStyle
 }
 
 func yearFilter(offset int) (time.Time, time.Time) {

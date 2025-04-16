@@ -39,7 +39,7 @@ type Model struct {
 func New() *Model {
 	return &Model{
 		table:     table.New(),
-		baseStyle: lipgloss.NewStyle().BorderStyle(lipgloss.NormalBorder()).BorderForeground(lipgloss.Color("240")),
+		baseStyle: lipgloss.NewStyle(),
 	}
 }
 

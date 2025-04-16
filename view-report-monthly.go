@@ -61,7 +61,7 @@ func (view *monthlyReportView) Init(_ Application) tea.Cmd {
 	return nil
 }
 
-func (view *monthlyReportView) ShortHelpKeys(keys keymap) []key.Binding {
+func (view *monthlyReportView) HelpKeys(keys keymap) []key.Binding {
 	return []key.Binding{keys.nextPage, keys.previousPage}
 }
 
@@ -89,11 +89,10 @@ func monthRows(records []dbRecord) [][]string {
 }
 
 func monthReportStyle(r, _ int, data []string) lipgloss.Style {
-	s := lipgloss.NewStyle().Padding(0, 1)
 	if r < 0 || len(data) == 0 || data[0] == "" || data[0][0] != 'T' {
-		return s
+		return tableCellStyle
 	}
-	return s.Background(lipgloss.AdaptiveColor{Dark: "#FFF", Light: "#000"}).Foreground(lipgloss.AdaptiveColor{Dark: "#000", Light: "#FFF"})
+	return tableSumRowStyle
 }
 
 func monthFilter(offset int) (time.Time, time.Time) {

@@ -16,7 +16,7 @@ func newWeeklyReportView() *weeklyReportView {
 		report: report.New().
 			SetTableBorder(lipgloss.NormalBorder()).
 			SetStyleFunc(weekReportStyle).
-			SetHeaders([]string{"Date", "Day", "Clocked", "Notes"}),
+			SetHeaders([]string{"Date", "Day", "Clocked"}),
 	}
 }
 
@@ -61,7 +61,7 @@ func (view *weeklyReportView) Init(_ Application) tea.Cmd {
 	return nil
 }
 
-func (view *weeklyReportView) ShortHelpKeys(keys keymap) []key.Binding {
+func (view *weeklyReportView) HelpKeys(keys keymap) []key.Binding {
 	return []key.Binding{keys.nextPage, keys.previousPage}
 }
 
@@ -69,23 +69,13 @@ func weekRows(records []dbRecord) [][]string {
 	var rows [][]string
 	for _, w := range recordsAsWeeks(records) {
 		for _, d := range w.Days {
-			notes := "--"
-			if len(d.Notes) > 0 {
-				notes = "!"
-			}
 			rows = append(rows, []string{
 				d.Date,
 				d.WeekDay.String()[:3],
 				d.Total.Truncate(time.Second).String(),
-				notes,
 			})
 		}
-		rows = append(rows, []string{
-			"Total",
-			"",
-			w.Total.Truncate(time.Second).String(),
-			"",
-		})
+		rows = append(rows, []string{"Total", "", w.Total.Truncate(time.Second).String()})
 	}
 	if len(rows) == 0 {
 		rows = append(rows, []string{"NO DATA", "NO DATA", "NO DATA", "NO DATA"})
@@ -94,11 +84,10 @@ func weekRows(records []dbRecord) [][]string {
 }
 
 func weekReportStyle(row, _ int, _ []string) lipgloss.Style {
-	s := lipgloss.NewStyle().Padding(0, 1)
 	if row == 7 {
-		s = s.Background(lipgloss.AdaptiveColor{Dark: "#FFF", Light: "#000"}).Foreground(lipgloss.AdaptiveColor{Dark: "#000", Light: "#FFF"})
+		return tableSumRowStyle
 	}
-	return s
+	return tableCellStyle
 }
 
 func weekFilter(offset int) (time.Time, time.Time) {

@@ -2,12 +2,10 @@
 package stopwatch
 
 import (
-	"strings"
 	"sync/atomic"
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
-	"github.com/charmbracelet/lipgloss"
 )
 
 var lastID int64
@@ -178,18 +176,14 @@ func (m Model) Since() time.Time {
 
 // View of the timer component.
 func (m Model) View() string {
-	var doc strings.Builder
-	view := lipgloss.NewStyle().Border(lipgloss.DoubleBorder()).Padding(1, 1).Width(30)
-	bold := lipgloss.NewStyle().Bold(true)
-	doc.WriteString(bold.Render("Elapsed: "))
-	doc.WriteString(m.d.Truncate(time.Second).String())
-	doc.WriteString(bold.Render("\nSince:   "))
-	if m.t0.IsZero() {
-		doc.WriteString("Idle 😴")
-	} else {
-		doc.WriteString(m.t0.Format("2006-01-02 15:04:05"))
+	if m.d == 0 {
+		return "Idle 😴"
 	}
-	return view.Render(doc.String())
+	if m.running {
+		return "🕒" + m.d.Truncate(time.Second).String()
+	} else {
+		return "✅" + m.d.Truncate(time.Second).String()
+	}
 }
 
 func tick(id int, tag int, d time.Duration) tea.Cmd {

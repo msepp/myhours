@@ -10,6 +10,8 @@ import (
 	"path/filepath"
 	"strconv"
 	"time"
+
+	"github.com/charmbracelet/lipgloss"
 )
 
 //go:embed schema/default.db
@@ -68,7 +70,7 @@ func ImportRecord(db *sql.Tx, start time.Time, duration time.Duration, category 
 	return id, nil
 }
 
-func (app Application) startRecord(start time.Time, category int, notes string) (int64, error) {
+func (app Application) startRecord(start time.Time, category int64, notes string) (int64, error) {
 	res, err := app.db.Exec(`INSERT INTO records ("start", "category", "notes") VALUES ($1, $2, $3) RETURNING id`,
 		start.In(time.UTC).Format(time.RFC3339Nano),
 		category,
@@ -139,29 +141,11 @@ type category struct {
 	fgColorLight string
 }
 
-func (app Application) loadConfig() (AppConfig, error) {
-	rows, err := app.db.Query(`SELECT "key", "value" FROM configuration`)
-	if err != nil {
-		return AppConfig{}, fmt.Errorf("db.Query: %w", err)
-	}
-	defer rows.Close()
-	var config AppConfig
-	for rows.Next() {
-		var key, value string
-		if err = rows.Scan(&key, &value); err != nil {
-			return AppConfig{}, fmt.Errorf("rows.Scan: %w", err)
-		}
-		switch key {
-		case "default_category":
-			config.DefaultCategory, err = strconv.ParseInt(value, 10, 64)
-			if err != nil {
-				return AppConfig{}, fmt.Errorf("default_category: strconv.Atoi: %w", err)
-			}
-		default:
-			app.l.Warn("unsupported configuration key", slog.String("key", key))
-		}
-	}
-	return config, nil
+func (c category) ForegroundColor() lipgloss.AdaptiveColor {
+	return lipgloss.AdaptiveColor{Light: c.fgColorLight, Dark: c.fgColorDark}
+}
+func (c category) BackgroundColor() lipgloss.AdaptiveColor {
+	return lipgloss.AdaptiveColor{Light: c.bgColorLight, Dark: c.bgColorDark}
 }
 
 func (app Application) updateConfig(key string, value string) error {
@@ -242,6 +226,31 @@ func scanDBRecordRow(row interface{ Scan(dst ...any) error }) (dbRecord, error) 
 		}
 	}
 	return record, nil
+}
+
+func loadConfig(db *sql.DB, l *slog.Logger) (AppConfig, error) {
+	rows, err := db.Query(`SELECT "key", "value" FROM configuration`)
+	if err != nil {
+		return AppConfig{}, fmt.Errorf("db.Query: %w", err)
+	}
+	defer rows.Close()
+	var config AppConfig
+	for rows.Next() {
+		var key, value string
+		if err = rows.Scan(&key, &value); err != nil {
+			return AppConfig{}, fmt.Errorf("rows.Scan: %w", err)
+		}
+		switch key {
+		case "default_category":
+			config.DefaultCategory, err = strconv.ParseInt(value, 10, 64)
+			if err != nil {
+				return AppConfig{}, fmt.Errorf("default_category: strconv.Atoi: %w", err)
+			}
+		default:
+			l.Warn("unsupported configuration key", slog.String("key", key))
+		}
+	}
+	return config, nil
 }
 
 type DailyReport struct {

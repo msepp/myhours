@@ -2,6 +2,7 @@ package myhours
 
 import (
 	"log/slog"
+	"strings"
 	"time"
 
 	"github.com/charmbracelet/bubbles/key"
@@ -15,35 +16,47 @@ func newTimerView(interval time.Duration) *timerView {
 }
 
 type timerView struct {
-	timer stopwatch.Model
+	timer          stopwatch.Model
+	activeCategory int64
+	activeRecordID int64
 }
 
-func (view *timerView) Name() string { return "Timer" }
+func (view *timerView) Name() string { return "Task" }
 
 func (view *timerView) Update(app Application, message tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := message.(type) {
 	case reHydrateMsg:
+		view.activeCategory = msg.category
+		view.activeRecordID = msg.recordID
 		return app, view.timer.StartFrom(msg.since)
 	case tea.KeyMsg:
 		switch {
-		case key.Matches(msg, app.keymap.start, app.keymap.stop):
-			app.keymap.stop.SetEnabled(!view.timer.Running())
-			app.keymap.start.SetEnabled(view.timer.Running())
+		case key.Matches(msg, app.keymap.switchTaskCategory):
+			cat := nextCategory(app.categories, view.activeCategory)
+			view.activeCategory = cat.id
+			// if there's an active task running, switch the category for it.
+			if view.activeRecordID > 0 {
+				if err := app.setRecordCategory(view.activeRecordID, view.activeCategory); err != nil {
+					app.l.Error("failed to update active record category", slog.String("error", err.Error()))
+				}
+			}
+			return app, nil
+		case key.Matches(msg, app.keymap.toggleTaskTimer):
 			switch view.timer.Running() {
 			case false:
 				start := time.Now()
 				var err error
-				if app.activeRecordID, err = app.startRecord(start, 2, ""); err != nil {
+				if view.activeRecordID, err = app.startRecord(start, view.activeCategory, ""); err != nil {
 					app.l.Error("failed to store record", slog.String("error", err.Error()))
 				}
 				return app, view.timer.StartFrom(start)
 			case true:
 				now := time.Now()
-				if err := app.finishRecord(app.activeRecordID, view.timer.Since(), now, "fake notes"); err != nil {
+				if err := app.finishRecord(view.activeRecordID, view.timer.Since(), now, ""); err != nil {
 					app.l.Error("failed to store record", slog.String("error", err.Error()))
 				}
-				app.activeRecordID = 0
-				return app, view.timer.Reset(false)
+				view.activeRecordID = 0
+				return app, view.timer.Stop()
 			}
 		}
 	}
@@ -52,14 +65,31 @@ func (view *timerView) Update(app Application, message tea.Msg) (tea.Model, tea.
 	return app, cmd
 }
 
-func (view *timerView) View(_ Application, _, _ int) string {
-	return lipgloss.NewStyle().Bold(true).Render(view.timer.View())
+func (view *timerView) View(app Application, width, _ int) string {
+	var doc strings.Builder
+	cat := activeCategory(app.categories, view.activeCategory)
+	if width > 40 {
+		width = 40
+	}
+	elapsed := view.timer.View()
+	started := view.timer.Since().Format(time.DateTime)
+	style := lipgloss.NewStyle().Border(lipgloss.DoubleBorder()).BorderForeground(cat.ForegroundColor()).Padding(1, 2).Width(width)
+	doc.WriteString(timerLabel.Render("Tracking:"))
+	doc.WriteString(lipgloss.NewStyle().Foreground(cat.ForegroundColor()).Render(cat.name))
+	doc.WriteString("\n")
+	doc.WriteString(timerLabel.Render("Started:"))
+	doc.WriteString(started)
+	doc.WriteString("\n")
+	doc.WriteString(timerLabel.Render("Elapsed:"))
+	doc.WriteString(elapsed)
+	return style.Render(doc.String())
 }
 
-func (view *timerView) Init(_ Application) tea.Cmd {
+func (view *timerView) Init(app Application) tea.Cmd {
+	view.activeCategory = app.defaultCategory
 	return nil
 }
 
-func (view *timerView) ShortHelpKeys(keys keymap) []key.Binding {
-	return []key.Binding{keys.start, keys.stop}
+func (view *timerView) HelpKeys(keys keymap) []key.Binding {
+	return []key.Binding{keys.switchTaskCategory, keys.toggleTaskTimer}
 }
