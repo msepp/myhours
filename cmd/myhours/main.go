@@ -13,8 +13,7 @@ import (
 	"time"
 
 	"github.com/msepp/myhours"
-
-	_ "github.com/glebarez/go-sqlite"
+	"github.com/msepp/myhours/sqlite"
 )
 
 var logger = slog.New(slog.NewTextHandler(os.Stderr, nil))
@@ -44,11 +43,12 @@ func main() {
 
 	logger.Info("opening database", slog.String("database", dbFile))
 	// Initialize the database
-	var db *sql.DB
-	if db, err = myhours.NewSQLiteDatabase(dbFile); err != nil {
+	var dbConn *sql.DB
+	if dbConn, err = sqlite.InitiateSQLiteDatabase(dbFile); err != nil {
 		logger.Error("failed to open database", slog.String("error", err.Error()))
 		os.Exit(1)
 	}
+	db := sqlite.NewSQLite(dbConn, sqlite.Logger(logger))
 	// If user wants to do import, do it now that we know we have a destination
 	// database ready.
 	if doImport {
@@ -59,7 +59,7 @@ func main() {
 			os.Exit(1)
 		}
 		scanner := bufio.NewScanner(f)
-		var entries []importedRecord
+		var entries []myhours.Record
 		for scanner.Scan() {
 			line := strings.TrimSpace(scanner.Text())
 			// skip empty lines and comments
@@ -71,42 +71,33 @@ func main() {
 				logger.Error("invalid line format", slog.String("line", line))
 				os.Exit(2)
 			}
-			var entry importedRecord
-			if entry.start, err = time.Parse(time.RFC3339Nano, pcs[0]); err != nil {
+			var entry myhours.Record
+			if entry.Start, err = time.Parse(time.RFC3339Nano, pcs[0]); err != nil {
 				logger.Error("invalid start time", slog.String("error", err.Error()))
 				os.Exit(2)
 			}
-			if entry.duration, err = time.ParseDuration(pcs[1]); err != nil {
+			if entry.Duration, err = time.ParseDuration(pcs[1]); err != nil {
 				logger.Error("invalid duration", slog.String("error", err.Error()))
 				os.Exit(2)
 			}
-			if entry.category, err = strconv.Atoi(pcs[2]); err != nil {
+			if entry.CategoryID, err = strconv.ParseInt(pcs[2], 10, 64); err != nil {
 				logger.Error("invalid category", slog.String("error", err.Error()))
 				os.Exit(2)
 			}
-			entry.notes = strings.TrimSpace(pcs[3])
+			entry.Notes = strings.TrimSpace(pcs[3])
+			entry.End = entry.Start.Add(entry.Duration)
 			entries = append(entries, entry)
 		}
 		if scanner.Err() != nil {
 			logger.Error("reading import file failed", slog.String("error", scanner.Err().Error()))
 			os.Exit(1)
 		}
-		var tx *sql.Tx
-		if tx, err = db.Begin(); err != nil {
-			logger.Error("failed to start transaction", slog.String("error", err.Error()))
+		var result []int64
+		if result, err = db.ImportRecords(entries); err != nil {
+			logger.Error("failed to import records", slog.String("error", err.Error()))
 			os.Exit(1)
 		}
-		for _, entry := range entries {
-			if _, err = myhours.ImportRecord(tx, entry.start, entry.duration, entry.category, entry.notes); err != nil {
-				logger.Error("failed to import record", slog.String("error", err.Error()))
-				os.Exit(1)
-			}
-		}
-		if err = tx.Commit(); err != nil {
-			logger.Error("failed to commit transaction", slog.String("error", err.Error()))
-			os.Exit(1)
-		}
-		logger.Info("importing complete", slog.Int("numberOfEntries", len(entries)))
+		logger.Info("importing complete", slog.Int("numberOfEntries", len(result)))
 		os.Exit(0)
 	}
 	logger.Info("database initialized", slog.String("database", dbFile))

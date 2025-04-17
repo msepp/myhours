@@ -1,89 +1,95 @@
 package myhours
 
 import (
+	"log/slog"
 	"strconv"
 	"time"
 
-	"github.com/charmbracelet/bubbles/key"
-	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/msepp/myhours/report"
 )
 
-func newYearlyReportView() *yearlyReportView {
-	return &yearlyReportView{
-		page: 0,
+func newYearlyReportView(db Database, l *slog.Logger) *reportView {
+	return &reportView{
+		id: nextViewID(),
+		db: db,
+		l:  l.With("view", "yearly"),
 		report: report.New().
 			SetTableBorder(lipgloss.NormalBorder()).
 			SetStyleFunc(yearReportStyle).
 			SetHeaders([]string{"Dates", "Month", "Clocked"}),
+		name:         "Year",
+		dateFilter:   yearFilter,
+		rowFormatter: yearRows,
+		tableHeader:  yearHeader,
+		categoryID:   2,
+		keymap:       appKeyMap,
+		page:         0,
+		height:       0,
+		width:        0,
 	}
 }
 
-type yearlyReportView struct {
-	report *report.Model
-	page   int
+func yearHeader(page int) string {
+	from, _ := yearFilter(page)
+	return strconv.FormatInt(int64(from.Year()), 10)
 }
 
-func (view *yearlyReportView) Name() string { return "Year" }
+type yearlyReport struct {
+	year   int
+	months []monthlyReport
+	total  time.Duration
+}
 
-func (view *yearlyReportView) Update(app Application, message tea.Msg) (tea.Model, tea.Cmd) {
-	switch msg := message.(type) {
-	case tea.KeyMsg:
-		switch {
-		case key.Matches(msg, app.keymap.previousPage):
-			view.page--
-			return app, view.UpdateData(app)
-		case key.Matches(msg, app.keymap.nextPage):
-			view.page = min(view.page+1, 0)
-			return app, view.UpdateData(app)
-		case key.Matches(msg, app.keymap.tabNext, app.keymap.tabNext, app.keymap.switchGlobalCategory):
-			return app, view.UpdateData(app)
+func (r yearlyReport) dateRange() (string, string) {
+	if len(r.months) == 0 {
+		return "", ""
+	}
+	if len(r.months) == 1 {
+		return r.months[0].dateRange()
+	}
+	first, _ := r.months[0].dateRange()
+	_, last := r.months[len(r.months)-1].dateRange()
+	return first, last
+}
+
+func recordsAsYears(records []Record) []yearlyReport {
+	var (
+		years []yearlyReport
+		cy    *yearlyReport
+	)
+	for _, m := range recordsAsMonths(records) {
+		if cy == nil || cy.year != m.year {
+			years = append(years, yearlyReport{year: m.year})
+			cy = &years[len(years)-1]
+			for i := range 12 {
+				cy.months = append(cy.months, monthlyReport{
+					year:  m.year,
+					month: time.Month(i + 1),
+				})
+			}
 		}
+		cy.months[m.month-1] = m
+		cy.total += m.total
 	}
-	var cmd tea.Cmd
-	view.report, cmd = view.report.Update(message)
-	return app, cmd
+	return years
 }
 
-func (view *yearlyReportView) UpdateData(app Application) tea.Cmd {
-	from, before := yearFilter(view.page)
-	return view.report.UpdateData(yearRows(app.getRecords(from, before, &app.defaultCategory)))
-}
-
-func (view *yearlyReportView) View(_ Application, viewWidth, viewHeight int) string {
-	if viewWidth > 80 {
-		viewWidth = 80
-	}
-	table := view.report.SetSize(viewWidth, viewHeight).View()
-	from, _ := yearFilter(view.page)
-	header := strconv.FormatInt(int64(from.Year()), 10)
-	return header + "\n" + table
-}
-
-func (view *yearlyReportView) Init(_ Application) tea.Cmd {
-	return nil
-}
-
-func (view *yearlyReportView) HelpKeys(keys keymap) []key.Binding {
-	return []key.Binding{keys.nextPage, keys.previousPage}
-}
-
-func yearRows(records []dbRecord) [][]string {
+func yearRows(records []Record) [][]string {
 	var rows [][]string
 	for _, y := range recordsAsYears(records) {
-		for _, m := range y.Months {
-			fd, ld := m.DateRange()
+		for _, m := range y.months {
+			fd, ld := m.dateRange()
 			rows = append(rows, []string{
 				fd + " – " + ld,
-				m.Month.String(),
-				m.Total.Truncate(time.Second).String(),
+				m.month.String(),
+				m.total.Truncate(time.Second).String(),
 			})
 		}
 		rows = append(rows, []string{
 			"Total",
 			"",
-			y.Total.Truncate(time.Second).String(),
+			y.total.Truncate(time.Second).String(),
 		})
 	}
 	if len(rows) == 0 {

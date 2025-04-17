@@ -1,7 +1,6 @@
 package myhours
 
 import (
-	"database/sql"
 	"fmt"
 	"log/slog"
 	"time"
@@ -26,16 +25,10 @@ func UseLogger(l *slog.Logger) Option {
 }
 
 // Run starts the myhours application using given database and optional options.
-func Run(db *sql.DB, options ...Option) error {
+func Run(db Database, options ...Option) error {
 	app := Application{
-		db: db,
-		l:  slog.New(slog.DiscardHandler),
-		views: []viewRenderer{
-			newTimerView(time.Millisecond * 100),
-			newWeeklyReportView(),
-			newMonthlyReportView(),
-			newYearlyReportView(),
-		},
+		db:     db,
+		l:      slog.New(slog.DiscardHandler),
 		keymap: appKeyMap,
 		help:   help.New(),
 	}
@@ -44,15 +37,23 @@ func Run(db *sql.DB, options ...Option) error {
 	for _, opt := range options {
 		opt(&app)
 	}
+	app.views = []viewRenderer{
+		newTimerView(db, app.l, time.Millisecond*100),
+		newWeeklyReportView(db, app.l),
+		newMonthlyReportView(db, app.l),
+		newYearlyReportView(db, app.l),
+	}
 	// fetch category options
 	var err error
-	if app.categories, err = app.getCategories(); err != nil {
+	if app.categories, err = db.Categories(); err != nil {
 		return fmt.Errorf("load categories: %w", err)
 	}
 	// load configuration
-	if app.config, err = loadConfig(db, app.l); err != nil {
+	var settings *Settings
+	if settings, err = db.Settings(); err != nil {
 		return fmt.Errorf("load config: %w", err)
 	}
+	app.config = *settings
 	app.defaultCategory = app.config.DefaultCategory
 	// boot-up the bubbletea runtime with our application model.
 	prog := tea.NewProgram(app, tea.WithAltScreen())

@@ -12,7 +12,7 @@ func (app Application) renderNavigation() string {
 	var doc strings.Builder
 	doc.WriteString(styleNavCap.Render("\uE0BA"))
 	doc.WriteString(styleModeIndicator.Render("mode:"))
-	doc.WriteString(styleModeIndicator.Foreground(cat.ForegroundColor()).Render(cat.name))
+	doc.WriteString(styleModeIndicator.Foreground(cat.ForegroundColor()).Render(cat.Name))
 	doc.WriteString(styleNavInactive.Render("│"))
 	var sections []string
 	for i, view := range app.views {

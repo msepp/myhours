@@ -2,89 +2,161 @@ package myhours
 
 import (
 	"fmt"
+	"log/slog"
 	"strconv"
 	"time"
 
-	"github.com/charmbracelet/bubbles/key"
-	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/msepp/myhours/report"
 )
 
-func newMonthlyReportView() *monthlyReportView {
-	return &monthlyReportView{
-		page: 0,
+func newMonthlyReportView(db Database, l *slog.Logger) *reportView {
+	return &reportView{
+		id: nextViewID(),
+		db: db,
+		l:  l.With("view", "monthly"),
 		report: report.New().
 			SetTableBorder(lipgloss.NormalBorder()).
 			SetStyleFunc(monthReportStyle).
 			SetHeaders([]string{"Dates", "Week", "Clocked"}),
+		name:         "Month",
+		dateFilter:   monthFilter,
+		rowFormatter: monthRows,
+		tableHeader:  monthHeader,
+		categoryID:   2,
+		keymap:       appKeyMap,
+		page:         0,
+		height:       0,
+		width:        0,
 	}
 }
 
-type monthlyReportView struct {
-	report *report.Model
-	page   int
+func monthHeader(page int) string {
+	from, until := monthFilter(page)
+	return fmt.Sprintf("%s, %d (%s – %s)",
+		from.Month().String(),
+		from.Year(),
+		from.Format(time.DateOnly),
+		until.Add(-1*time.Millisecond).Format(time.DateOnly),
+	)
 }
 
-func (view *monthlyReportView) Name() string { return "Month" }
+type monthlyReport struct {
+	year      int
+	month     time.Month
+	firstDate string
+	lastDate  string
+	total     time.Duration
+	weeks     []weeklyReport
+}
 
-func (view *monthlyReportView) Update(app Application, message tea.Msg) (tea.Model, tea.Cmd) {
-	switch msg := message.(type) {
-	case tea.KeyMsg:
-		switch {
-		case key.Matches(msg, app.keymap.previousPage):
-			view.page--
-			return app, view.UpdateData(app)
-		case key.Matches(msg, app.keymap.nextPage):
-			view.page = min(view.page+1, 0)
-			return app, view.UpdateData(app)
-		case key.Matches(msg, app.keymap.tabNext, app.keymap.tabPrev, app.keymap.switchGlobalCategory):
-			return app, view.UpdateData(app)
+func (r monthlyReport) dateRange() (string, string) {
+	if len(r.weeks) == 0 {
+		return "", ""
+	}
+	if len(r.weeks) == 1 {
+		return r.weeks[0].dateRange()
+	}
+	first, _ := r.weeks[0].dateRange()
+	_, last := r.weeks[len(r.weeks)-1].dateRange()
+	return first, last
+}
+
+func recordsAsMonths(records []Record) []monthlyReport {
+	var (
+		months []monthlyReport
+		cm     *monthlyReport
+		cw     *weeklyReport
+	)
+	for _, r := range records {
+		start := r.Start.In(time.Local)
+		y, m, _ := start.Date()
+		if cm == nil || cm.month != m || cm.year != y {
+			first := time.Date(y, m, 1, 0, 0, 0, 0, time.Local)
+			last := time.Date(y, m+1, -1, 0, 0, 0, 0, time.Local)
+			months = append(months, monthlyReport{
+				year:      y,
+				month:     m,
+				firstDate: first.Format(time.DateOnly),
+				lastDate:  last.Format(time.DateOnly),
+			})
+			cm = &months[len(months)-1]
+			// create the month weeks
+			prevWeekNo := 0
+			for !first.After(last) {
+				if _, weekNo := first.ISOWeek(); prevWeekNo < weekNo {
+					prevWeekNo = weekNo
+					wr := weeklyReport{
+						year:   y,
+						weekNo: weekNo,
+					}
+					// seed the days of the week to get a full week.
+					dd := first
+					_, wNo := dd.ISOWeek()
+					for wNo == weekNo && dd.Month() == m {
+						wr.days = append(wr.days, dailyReport{
+							date:    dd.Format(time.DateOnly),
+							weekDay: dd.Weekday(),
+							month:   dd.Month(),
+						})
+						dd = dd.AddDate(0, 0, 1)
+						_, wNo = dd.ISOWeek()
+					}
+					cm.weeks = append(cm.weeks, wr)
+				}
+				first = first.AddDate(0, 0, 1)
+			}
+			cw = nil
+		}
+		_, weekNo := r.Start.In(time.Local).ISOWeek()
+		if cw == nil || cw.weekNo != weekNo {
+			for i, w := range cm.weeks {
+				if w.weekNo == weekNo {
+					cw = &cm.weeks[i]
+				}
+			}
+			if cw == nil {
+				panic("week not set somehow!")
+			}
+		}
+		cm.total += r.Duration
+		cw.total += r.Duration
+		date := start.Format(time.DateOnly)
+		for i := range cw.days {
+			if cw.days[i].date != date {
+				continue
+			}
+			cw.days[i].total += r.Duration
+			break
+		}
+		wd := start.Weekday()
+		if wd == 0 {
+			wd = 7
+		}
+		wd--
+		cw.days[wd].total += r.Duration
+		if r.Notes != "" {
+			cw.days[wd].notes = append(cw.days[wd].notes, r.Notes)
 		}
 	}
-	var cmd tea.Cmd
-	view.report, cmd = view.report.Update(message)
-	return app, cmd
+	return months
 }
 
-func (view *monthlyReportView) UpdateData(app Application) tea.Cmd {
-	from, before := monthFilter(view.page)
-	return view.report.UpdateData(monthRows(app.getRecords(from, before, &app.defaultCategory)))
-}
-
-func (view *monthlyReportView) View(_ Application, viewWidth, viewHeight int) string {
-	if viewWidth > 80 {
-		viewWidth = 80
-	}
-	table := view.report.SetSize(viewWidth, viewHeight).View()
-	from, until := monthFilter(view.page)
-	header := fmt.Sprintf("%s, %d (%s – %s)\n", from.Month().String(), from.Year(), from.Format(time.DateOnly), until.Add(-1*time.Millisecond).Format(time.DateOnly))
-	return header + table
-}
-
-func (view *monthlyReportView) Init(_ Application) tea.Cmd {
-	return nil
-}
-
-func (view *monthlyReportView) HelpKeys(keys keymap) []key.Binding {
-	return []key.Binding{keys.nextPage, keys.previousPage}
-}
-
-func monthRows(records []dbRecord) [][]string {
+func monthRows(records []Record) [][]string {
 	var rows [][]string
 	for _, m := range recordsAsMonths(records) {
-		for _, w := range m.Weeks {
-			fd, ld := w.DateRange()
+		for _, w := range m.weeks {
+			fd, ld := w.dateRange()
 			rows = append(rows, []string{
 				fd + " – " + ld,
-				"W" + strconv.Itoa(w.WeekNo),
-				w.Total.Truncate(time.Second).String(),
+				"W" + strconv.Itoa(w.weekNo),
+				w.total.Truncate(time.Second).String(),
 			})
 		}
 		rows = append(rows, []string{
 			"Total",
 			"",
-			m.Total.Truncate(time.Second).String(),
+			m.total.Truncate(time.Second).String(),
 		})
 	}
 	if len(rows) == 0 {

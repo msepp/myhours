@@ -2,88 +2,121 @@ package myhours
 
 import (
 	"fmt"
+	"log/slog"
 	"time"
 
-	"github.com/charmbracelet/bubbles/key"
-	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/msepp/myhours/report"
 )
 
-func newWeeklyReportView() *weeklyReportView {
-	return &weeklyReportView{
-		page: 0,
+func newWeeklyReportView(db Database, l *slog.Logger) *reportView {
+	return &reportView{
+		id: nextViewID(),
+		db: db,
+		l:  l.With("view", "weekly"),
 		report: report.New().
 			SetTableBorder(lipgloss.NormalBorder()).
 			SetStyleFunc(weekReportStyle).
 			SetHeaders([]string{"Date", "Day", "Clocked"}),
+		name:         "Week",
+		dateFilter:   weekFilter,
+		rowFormatter: weekRows,
+		tableHeader:  weekHeader,
+		categoryID:   2,
+		keymap:       appKeyMap,
+		page:         0,
+		height:       0,
+		width:        0,
 	}
 }
 
-type weeklyReportView struct {
-	report *report.Model
-	page   int
+func weekHeader(page int) string {
+	from, until := weekFilter(page)
+	y, w := from.ISOWeek()
+	return fmt.Sprintf("Week %0d, %d (%s – %s)",
+		w,
+		y,
+		from.Format(time.DateOnly),
+		until.Add(-1*time.Millisecond).Format(time.DateOnly),
+	)
 }
 
-func (view *weeklyReportView) Name() string { return "Week" }
+type dailyReport struct {
+	date    string
+	weekDay time.Weekday
+	month   time.Month
+	total   time.Duration
+	notes   []string
+}
 
-func (view *weeklyReportView) Update(app Application, message tea.Msg) (tea.Model, tea.Cmd) {
-	switch msg := message.(type) {
-	case tea.KeyMsg:
-		switch {
-		case key.Matches(msg, app.keymap.previousPage):
-			view.page--
-			return app, view.UpdateData(app)
-		case key.Matches(msg, app.keymap.nextPage):
-			view.page = min(view.page+1, 0)
-			return app, view.UpdateData(app)
-		case key.Matches(msg, app.keymap.tabNext, app.keymap.tabPrev, app.keymap.switchGlobalCategory):
-			return app, view.UpdateData(app)
+type weeklyReport struct {
+	year   int
+	weekNo int
+	total  time.Duration
+	days   []dailyReport
+}
+
+func (r weeklyReport) dateRange() (string, string) {
+	if len(r.days) == 0 {
+		return "", ""
+	}
+	if len(r.days) == 1 {
+		return r.days[0].date, r.days[0].date
+	}
+	return r.days[0].date, r.days[len(r.days)-1].date
+}
+
+func recordsAsWeeks(records []Record) []weeklyReport {
+	var (
+		weeks []weeklyReport
+		cw    *weeklyReport
+	)
+	for _, record := range records {
+		// show dates in local time. They are stored in UTC.
+		start := record.Start.In(time.Local)
+		y, weekNo := start.In(time.Local).ISOWeek()
+		wd := int(start.Weekday())
+		if wd == 0 { // Sunday is zero. Horrible.
+			wd = 7
+		}
+		wd--
+		if cw == nil || cw.year != y || cw.weekNo != weekNo {
+			weeks = append(weeks, weeklyReport{year: y, weekNo: weekNo})
+			cw = &weeks[len(weeks)-1]
+			// seed the days of the week to get a full week.
+			for i := range 7 {
+				d := start.AddDate(0, 0, -1*(wd-i))
+				cw.days = append(cw.days, dailyReport{
+					date:    d.Format(time.DateOnly),
+					weekDay: d.Weekday(),
+					month:   d.Month(),
+				})
+			}
+		}
+		cw.total += record.Duration
+		cd := &cw.days[wd]
+		cd.total += record.Duration
+		if record.Notes != "" {
+			cd.notes = append(cd.notes, record.Notes)
 		}
 	}
-	var cmd tea.Cmd
-	view.report, cmd = view.report.Update(message)
-	return app, cmd
+	return weeks
 }
 
-func (view *weeklyReportView) UpdateData(app Application) tea.Cmd {
-	from, before := weekFilter(view.page)
-	return view.report.UpdateData(weekRows(app.getRecords(from, before, &app.defaultCategory)))
-}
-
-func (view *weeklyReportView) View(_ Application, viewWidth, viewHeight int) string {
-	if viewWidth > 80 {
-		viewWidth = 80
-	}
-	table := view.report.SetSize(viewWidth, viewHeight).View()
-	from, until := weekFilter(view.page)
-	y, w := from.ISOWeek()
-	header := fmt.Sprintf("Week %0d, %d (%s – %s)\n", w, y, from.Format(time.DateOnly), until.Add(-1*time.Millisecond).Format(time.DateOnly))
-	return header + table
-}
-
-func (view *weeklyReportView) Init(_ Application) tea.Cmd {
-	return nil
-}
-
-func (view *weeklyReportView) HelpKeys(keys keymap) []key.Binding {
-	return []key.Binding{keys.nextPage, keys.previousPage}
-}
-
-func weekRows(records []dbRecord) [][]string {
+func weekRows(records []Record) [][]string {
 	var rows [][]string
 	for _, w := range recordsAsWeeks(records) {
-		for _, d := range w.Days {
+		for _, d := range w.days {
 			rows = append(rows, []string{
-				d.Date,
-				d.WeekDay.String()[:3],
-				d.Total.Truncate(time.Second).String(),
+				d.date,
+				d.weekDay.String()[:3],
+				d.total.Truncate(time.Second).String(),
 			})
 		}
-		rows = append(rows, []string{"Total", "", w.Total.Truncate(time.Second).String()})
+		rows = append(rows, []string{"Total", "", w.total.Truncate(time.Second).String()})
 	}
 	if len(rows) == 0 {
-		rows = append(rows, []string{"NO DATA", "NO DATA", "NO DATA", "NO DATA"})
+		rows = append(rows, []string{"NO DATA", "NO DATA", "NO DATA"})
 	}
 	return rows
 }
