@@ -17,6 +17,20 @@ import (
 //go:embed schema/default.db
 var defaultDB []byte
 
+const (
+	selectFullRecord       = `SELECT "id", "start", "end", "duration", "category", "notes" FROM records`
+	queryActiveRecord      = selectFullRecord + ` WHERE "end" IS NULL ORDER BY id DESC LIMIT 1`
+	queryRecords           = selectFullRecord + ` WHERE "start" > $1 AND "end" < $2 ORDER BY start ASC`
+	queryRecordsOfCategory = selectFullRecord + ` WHERE "start" > $1 AND "end" < $2 AND "category" = $3 ORDER BY start ASC`
+	queryCategories        = `SELECT "id", "name", "color_dark_bg", "color_dark_fg", "color_light_bg", "color_light_fg" FROM categories ORDER BY "id" ASC`
+	insertFullRecord       = `INSERT INTO records ("start", "end", "duration", "category", "notes") VALUES ($1, $2, $3, $4, $5) RETURNING id`
+	insertActiveRecord     = `INSERT INTO records ("start", "category", "notes") VALUES ($1, $2, $3) RETURNING id`
+	updateRecordCategory   = `UPDATE records SET "category" = $2 WHERE "id" = $1`
+	updateRecordAsFinished = `UPDATE records SET "start" = $2, "end" = $3, "duration" = $4, "notes" = $5 WHERE "id" = $1`
+	queryConfigSettings    = `SELECT "key", "value" FROM configuration`
+	updateConfigSetting    = `UPDATE configuration SET "value" = $2 WHERE "key" = $1`
+)
+
 // NewSQLiteDatabase opens a SQLite database from given location.
 //
 // If no database exists in the given location, new database is initialized and
@@ -53,7 +67,7 @@ func NewSQLiteDatabase(dbFile string) (*sql.DB, error) {
 //
 // Can be used for example to bring in data from other time keeping systems.
 func ImportRecord(db *sql.Tx, start time.Time, duration time.Duration, category int, notes string) (int64, error) {
-	res, err := db.Exec(`INSERT INTO records ("start", "end", "duration", "category", "notes") VALUES ($1, $2, $3, $4, $5) RETURNING id`,
+	res, err := db.Exec(insertFullRecord,
 		start.In(time.UTC).Format(time.RFC3339Nano),
 		start.Add(duration).Format(time.RFC3339Nano),
 		duration.String(),
@@ -71,7 +85,7 @@ func ImportRecord(db *sql.Tx, start time.Time, duration time.Duration, category 
 }
 
 func (app Application) startRecord(start time.Time, category int64, notes string) (int64, error) {
-	res, err := app.db.Exec(`INSERT INTO records ("start", "category", "notes") VALUES ($1, $2, $3) RETURNING id`,
+	res, err := app.db.Exec(insertActiveRecord,
 		start.In(time.UTC).Format(time.RFC3339Nano),
 		category,
 		notes,
@@ -87,7 +101,7 @@ func (app Application) startRecord(start time.Time, category int64, notes string
 }
 
 func (app Application) setRecordCategory(id int64, category int64) error {
-	_, err := app.db.Exec(`UPDATE records SET "category"=$2 WHERE "id"=$1`,
+	_, err := app.db.Exec(updateRecordCategory,
 		id,
 		category,
 	)
@@ -98,7 +112,7 @@ func (app Application) setRecordCategory(id int64, category int64) error {
 }
 
 func (app Application) finishRecord(id int64, start, end time.Time, notes string) error {
-	_, err := app.db.Exec(`UPDATE records SET "start"=$2, "end"=$3, "duration"=$4, "notes"=$5 WHERE "id"=$1`,
+	_, err := app.db.Exec(updateRecordAsFinished,
 		id,
 		start.In(time.UTC).Format(time.RFC3339Nano),
 		end.In(time.UTC).Format(time.RFC3339Nano),
@@ -112,7 +126,7 @@ func (app Application) finishRecord(id int64, start, end time.Time, notes string
 }
 
 func (app Application) partialRecord() (*dbRecord, error) {
-	res := app.db.QueryRow(`SELECT "id", "start", "end", "duration", "category", "notes" FROM records WHERE "end" IS NULL ORDER BY id DESC LIMIT 1`)
+	res := app.db.QueryRow(queryActiveRecord)
 	record, err := scanDBRecordRow(res)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
@@ -149,7 +163,7 @@ func (c category) BackgroundColor() lipgloss.AdaptiveColor {
 }
 
 func (app Application) updateConfig(key string, value string) error {
-	_, err := app.db.Exec(`UPDATE configuration SET "value"=$2 WHERE "key"=$1`,
+	_, err := app.db.Exec(updateConfigSetting,
 		key,
 		value,
 	)
@@ -160,7 +174,7 @@ func (app Application) updateConfig(key string, value string) error {
 }
 
 func (app Application) getCategories() ([]category, error) {
-	rows, err := app.db.Query(`SELECT "id", "name", "color_dark_bg", "color_dark_fg", "color_light_bg", "color_light_fg" FROM categories ORDER BY "id" ASC`)
+	rows, err := app.db.Query(queryCategories)
 	if err != nil {
 		return nil, fmt.Errorf("db.Query: %w", err)
 	}
@@ -176,17 +190,28 @@ func (app Application) getCategories() ([]category, error) {
 	return result, nil
 }
 
-func (app Application) getRecords(from, before time.Time) []dbRecord {
-	res, err := app.db.Query(
-		`SELECT "id", "start", "end", "duration", "category", "notes" FROM records WHERE "start" > $1 AND "end" < $2 ORDER BY start ASC`,
-		from.In(time.UTC).Format(time.RFC3339Nano),
-		before.In(time.UTC).Format(time.RFC3339Nano),
+func (app Application) getRecords(from, before time.Time, c *int64) []dbRecord {
+	var (
+		query string
+		args  = []any{
+			from.In(time.UTC).Format(time.RFC3339Nano),
+			before.In(time.UTC).Format(time.RFC3339Nano),
+		}
 	)
+	// fetch records based on category being set or not.
+	if c != nil {
+		query = queryRecordsOfCategory
+		args = append(args, *c)
+	} else {
+		query = queryRecords
+	}
+	res, err := app.db.Query(query, args...)
 	if err != nil {
 		app.l.Error("failed to query database", slog.String("error", err.Error()))
 		return nil
 	}
 	defer res.Close()
+	// scan all rows into dbRecords
 	var records []dbRecord
 	for res.Next() {
 		var record dbRecord
@@ -200,7 +225,11 @@ func (app Application) getRecords(from, before time.Time) []dbRecord {
 	return records
 }
 
-func scanDBRecordRow(row interface{ Scan(dst ...any) error }) (dbRecord, error) {
+type scanner interface {
+	Scan(dest ...interface{}) error
+}
+
+func scanDBRecordRow(row scanner) (dbRecord, error) {
 	var (
 		id                   int64
 		start                string
@@ -229,7 +258,7 @@ func scanDBRecordRow(row interface{ Scan(dst ...any) error }) (dbRecord, error) 
 }
 
 func loadConfig(db *sql.DB, l *slog.Logger) (AppConfig, error) {
-	rows, err := db.Query(`SELECT "key", "value" FROM configuration`)
+	rows, err := db.Query(queryConfigSettings)
 	if err != nil {
 		return AppConfig{}, fmt.Errorf("db.Query: %w", err)
 	}

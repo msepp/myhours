@@ -34,17 +34,22 @@ func (view *monthlyReportView) Update(app Application, message tea.Msg) (tea.Mod
 		switch {
 		case key.Matches(msg, app.keymap.previousPage):
 			view.page--
-			return app, view.report.UpdateData(monthRows(app.getRecords(monthFilter(view.page))))
+			return app, view.UpdateData(app)
 		case key.Matches(msg, app.keymap.nextPage):
 			view.page = min(view.page+1, 0)
-			return app, view.report.UpdateData(monthRows(app.getRecords(monthFilter(view.page))))
-		case key.Matches(msg, app.keymap.tabNext, app.keymap.tabPrev):
-			return app, view.report.UpdateData(monthRows(app.getRecords(monthFilter(view.page))))
+			return app, view.UpdateData(app)
+		case key.Matches(msg, app.keymap.tabNext, app.keymap.tabPrev, app.keymap.switchGlobalCategory):
+			return app, view.UpdateData(app)
 		}
 	}
 	var cmd tea.Cmd
 	view.report, cmd = view.report.Update(message)
 	return app, cmd
+}
+
+func (view *monthlyReportView) UpdateData(app Application) tea.Cmd {
+	from, before := monthFilter(view.page)
+	return view.report.UpdateData(monthRows(app.getRecords(from, before, &app.defaultCategory)))
 }
 
 func (view *monthlyReportView) View(_ Application, viewWidth, viewHeight int) string {
