@@ -217,7 +217,7 @@ func (db *SQLite) Settings() (*myhours.Settings, error) {
 		}
 		switch key {
 		case myhours.SettingDefaultCategory:
-			config.DefaultCategory, err = strconv.ParseInt(value, 10, 64)
+			config.DefaultCategoryID, err = strconv.ParseInt(value, 10, 64)
 			if err != nil {
 				return nil, fmt.Errorf(key+": strconv.Atoi: %w", err)
 			}

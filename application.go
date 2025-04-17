@@ -28,7 +28,7 @@ type Application struct {
 	views           []viewRenderer
 	categories      []Category
 	config          Settings
-	keymap          keymap
+	keymap          appKeys
 	help            help.Model
 	wWidth          int
 	wHeight         int
@@ -67,8 +67,8 @@ func (app Application) Init() tea.Cmd {
 }
 
 func (app Application) View() string {
-	viewWidth := app.wWidth - windowStyle.GetHorizontalFrameSize()
-	viewHeight := app.wHeight - windowStyle.GetVerticalFrameSize()
+	viewWidth := app.wWidth - styleWindow.GetHorizontalFrameSize()
+	viewHeight := app.wHeight - styleWindow.GetVerticalFrameSize()
 	if app.showHelp {
 		return lipgloss.Place(viewWidth, viewHeight, lipgloss.Center, lipgloss.Center, app.helpView())
 	}
@@ -80,7 +80,7 @@ func (app Application) View() string {
 	doc.WriteString(lipgloss.Place(viewWidth, viewHeight, lipgloss.Center, lipgloss.Center, viewContent))
 	doc.WriteString("\n")
 	doc.WriteString(lipgloss.Place(viewWidth, navHeight, lipgloss.Center, lipgloss.Center, nav+" "+app.help.ShortHelpView([]key.Binding{app.keymap.openHelp})))
-	return windowStyle.Render(doc.String())
+	return styleWindow.Render(doc.String())
 }
 
 func (app Application) Update(message tea.Msg) (tea.Model, tea.Cmd) {
@@ -89,7 +89,7 @@ func (app Application) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 		app.wWidth = msg.Width
 		app.wHeight = msg.Height
 		for _, view := range app.views {
-			view.Update(viewAreaSizeMsg{height: msg.Height - windowStyle.GetVerticalFrameSize() - 2, width: msg.Width - windowStyle.GetHorizontalFrameSize()})
+			view.Update(viewAreaSizeMsg{height: msg.Height - styleWindow.GetVerticalFrameSize() - 2, width: msg.Width - styleWindow.GetHorizontalFrameSize()})
 		}
 	case tea.KeyMsg:
 		switch {

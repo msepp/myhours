@@ -100,9 +100,9 @@ func yearRows(records []Record) [][]string {
 
 func yearReportStyle(r, _ int, data []string) lipgloss.Style {
 	if r < 0 || len(data) == 0 || data[0] == "" || data[0][0] != 'T' {
-		return tableCellStyle
+		return styleTableCell
 	}
-	return tableSumRowStyle
+	return styleTableSumRow
 }
 
 func yearFilter(offset int) (time.Time, time.Time) {

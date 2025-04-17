@@ -27,7 +27,7 @@ type timerView struct {
 	db             Database
 	l              *slog.Logger
 	timer          stopwatch.Model
-	keymap         keymap
+	keymap         appKeys
 	categories     []Category
 	width          int
 	activeCategory int64
@@ -96,18 +96,18 @@ func (view *timerView) View() string {
 	elapsed := view.timer.View()
 	started := view.timer.Since()
 	style := lipgloss.NewStyle().Border(lipgloss.DoubleBorder()).BorderForeground(cat.ForegroundColor()).Padding(1, 2).Width(w)
-	doc.WriteString(timerLabel.Render("Tracking:"))
+	doc.WriteString(styleTimerLabel.Render("Tracking:"))
 	doc.WriteString(lipgloss.NewStyle().Foreground(cat.ForegroundColor()).Render(cat.Name))
 	doc.WriteString("\n")
-	doc.WriteString(timerLabel.Render("Elapsed:"))
+	doc.WriteString(styleTimerLabel.Render("Elapsed:"))
 	doc.WriteString(elapsed)
 	doc.WriteString("\n")
-	doc.WriteString(timerLabel.Render("Started:"))
+	doc.WriteString(styleTimerLabel.Render("Started:"))
 	if !started.IsZero() {
 		doc.WriteString(started.Format(time.DateTime))
 	}
 	doc.WriteString("\n")
-	doc.WriteString(timerLabel.Render("Task ID:"))
+	doc.WriteString(styleTimerLabel.Render("Task ID:"))
 	switch {
 	case view.activeRecordID > 0:
 		doc.WriteString(strconv.FormatInt(view.activeRecordID, 10))

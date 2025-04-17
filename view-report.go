@@ -27,7 +27,7 @@ type reportView struct {
 	tableHeader  func(page int) string
 	categoryID   int64
 	categories   []Category
-	keymap       keymap
+	keymap       appKeys
 	page         int
 	height       int
 	width        int

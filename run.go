@@ -32,7 +32,7 @@ func Run(db Database, options ...Option) error {
 		keymap: appKeyMap,
 		help:   help.New(),
 	}
-	app.help.Styles = helpStyle
+	app.help.Styles = styleHelp
 	// apply options to customize the application.
 	for _, opt := range options {
 		opt(&app)
@@ -48,15 +48,26 @@ func Run(db Database, options ...Option) error {
 	if app.categories, err = db.Categories(); err != nil {
 		return fmt.Errorf("load categories: %w", err)
 	}
-	// load configuration
-	var settings *Settings
-	if settings, err = db.Settings(); err != nil {
-		return fmt.Errorf("load config: %w", err)
+	app.defaultCategory = app.config.DefaultCategoryID
+	appv1 := ApplicationV1{
+		db: db,
+		l:  app.l,
+		models: models{
+			help:  help.New(),
+			timer: newTimerModel(time.Millisecond * 250),
+		},
+		categories: app.categories,
+		keys:       appKeyMap,
+		viewNames: []string{
+			"Timer",
+			"Week",
+			"Month",
+			"Year",
+		},
 	}
-	app.config = *settings
-	app.defaultCategory = app.config.DefaultCategory
+	appv1.models.help.Styles = styleHelp
 	// boot-up the bubbletea runtime with our application model.
-	prog := tea.NewProgram(app, tea.WithAltScreen())
+	prog := tea.NewProgram(appv1, tea.WithAltScreen())
 	if _, err = prog.Run(); err != nil {
 		return fmt.Errorf("bubbletea.NewProgram().Run(): %w", err)
 	}

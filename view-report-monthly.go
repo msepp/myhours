@@ -167,9 +167,9 @@ func monthRows(records []Record) [][]string {
 
 func monthReportStyle(r, _ int, data []string) lipgloss.Style {
 	if r < 0 || len(data) == 0 || data[0] == "" || data[0][0] != 'T' {
-		return tableCellStyle
+		return styleTableCell
 	}
-	return tableSumRowStyle
+	return styleTableSumRow
 }
 
 func monthFilter(offset int) (time.Time, time.Time) {

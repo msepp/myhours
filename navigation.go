@@ -32,7 +32,7 @@ func (app Application) renderNavigation() string {
 	return doc.String()
 }
 
-type keymap struct {
+type appKeys struct {
 	switchGlobalCategory key.Binding
 	switchTaskCategory   key.Binding
 	tabNext              key.Binding
@@ -45,7 +45,7 @@ type keymap struct {
 	quit                 key.Binding
 }
 
-var appKeyMap = keymap{
+var appKeyMap = appKeys{
 	openHelp: key.NewBinding(
 		key.WithKeys("H"),
 		key.WithHelp("H", "help"),

@@ -12,6 +12,25 @@ type updateDefaultCategoryMsg struct {
 	categoryID int64
 }
 
+// updateSettingsMsg updates current application settings
+type updateSettingsMsg struct {
+	settings Settings
+}
+
+// timerCategoryMsg update the category of timer.
+type timerCategoryMsg struct {
+	categoryID int64
+}
+
+type recordStartMsg struct {
+	recordID   int64
+	categoryID int64
+}
+
+type recordFinishMsg struct {
+	recordID int64
+}
+
 // reHydrateMsg is sent to select the initial active task
 type reHydrateMsg struct {
 	recordID int64
@@ -22,4 +41,20 @@ type reHydrateMsg struct {
 // viewAreaSizeMsg reports a change to the view area (usable area for view data)
 type viewAreaSizeMsg struct {
 	width, height int
+}
+
+// timerTickMsg is a message that is sent on every timer timerTick.
+type timerTickMsg struct {
+	tag int
+}
+
+// timerStartMsg is sent when the stopwatch should start.
+type timerStartMsg struct {
+	from time.Time
+}
+
+// timerStopMsg is sent when the stopwatch should stop.
+type timerStopMsg struct {
+	start time.Time
+	end   time.Time
 }

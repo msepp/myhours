@@ -123,9 +123,9 @@ func weekRows(records []Record) [][]string {
 
 func weekReportStyle(row, _ int, _ []string) lipgloss.Style {
 	if row == 7 {
-		return tableSumRowStyle
+		return styleTableSumRow
 	}
-	return tableCellStyle
+	return styleTableCell
 }
 
 func weekFilter(offset int) (time.Time, time.Time) {
