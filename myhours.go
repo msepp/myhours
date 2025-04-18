@@ -128,13 +128,17 @@ func decWrap(v, min, max int) int {
 	}
 }
 
-func byIndex[T comparable](set []T, index int) T {
+// indexOrZero returns the value from set in given index, or if index does not
+// exist in the given slice, the zero value of type T.
+func indexOrZero[T comparable](set []T, index int) T {
 	if index <= 0 || index >= len(set) {
 		return *new(T)
 	}
 	return set[index]
 }
 
+// findCategory from given slice by id. Returns placeholder value with ID zero
+// if no Category was found with given id.
 func findCategory(categories []Category, id int64) Category {
 	for _, cat := range categories {
 		if cat.ID == id {
@@ -144,17 +148,31 @@ func findCategory(categories []Category, id int64) Category {
 	return Category{ID: 0, Name: "unknown"}
 }
 
+// nextCategoryID returns ID of the next Category from given slice, using the
+// currentID as the starting point. If current ID is the last entry in given slice,
+// returns the ID of the first Category.
+//
+// If categories is empty, returns the given currentID. If currentID can not be
+// found in the slice, returns ID of first Category.
 func nextCategoryID(categories []Category, currentID int64) int64 {
-	var idx int
-	for idx = 0; idx < len(categories); idx++ {
-		if categories[idx].ID == currentID {
-			break
+	// if there's no categories, just return current ID, what ever that means
+	if len(categories) == 0 {
+		return currentID
+	}
+	// also, if there's just one category, we'll return that.
+	if len(categories) == 1 {
+		return categories[0].ID
+	}
+	// find the category that matches current one, get next index in list of
+	// categories and return that, wrapping around if necessary.
+	for i, cat := range categories {
+		if cat.ID != currentID {
+			continue
 		}
+		nextIdx := incWrap(i, 0, len(categories)-1)
+		return categories[nextIdx].ID
 	}
-	if idx >= len(categories)-1 {
-		idx = 0
-	} else {
-		idx++
-	}
-	return categories[idx].ID
+	// given category doesn't exist in current set, odd. Return the first one we
+	// have.
+	return categories[0].ID
 }

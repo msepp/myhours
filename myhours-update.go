@@ -301,5 +301,5 @@ func (m MyHours) updateReportData() tea.Cmd {
 
 // reportPageNo returns the active page number for a report view.
 func (m MyHours) reportPageNo() int {
-	return byIndex(m.state.reportPage, m.state.activeView)
+	return indexOrZero(m.state.reportPage, m.state.activeView)
 }
