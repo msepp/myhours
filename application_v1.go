@@ -160,6 +160,10 @@ func (app ApplicationV1) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 			if app.state.activeView < 0 {
 				app.state.activeView = len(app.viewNames) - 1
 			}
+			app.state.reportLoading = true
+			if cmd := app.updateReportData(); cmd != nil {
+				commands = append(commands, cmd)
+			}
 		case key.Matches(msg, app.keys.toggleTaskTimer):
 			if app.models.timer.Running() {
 				commands = append(commands, app.models.timer.Stop())
