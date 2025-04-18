@@ -118,6 +118,16 @@ func (app ApplicationV1) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 			app.state.showHelp = !app.state.showHelp
 			app.keys.openHelp.SetEnabled(!app.state.showHelp)
 			app.keys.closeHelp.SetEnabled(app.state.showHelp)
+		case key.Matches(msg, app.keys.nextTab):
+			app.state.activeView++
+			if app.state.activeView >= len(app.viewNames) {
+				app.state.activeView = 0
+			}
+		case key.Matches(msg, app.keys.prevTab):
+			app.state.activeView--
+			if app.state.activeView < 0 {
+				app.state.activeView = len(app.viewNames) - 1
+			}
 		case key.Matches(msg, app.keys.toggleTaskTimer):
 			if app.models.timer.Running() {
 				commands = append(commands, app.models.timer.Stop())
@@ -173,7 +183,16 @@ func (app ApplicationV1) View() string {
 	case app.state.showHelp:
 		return app.renderHelp()
 	default:
-		return app.renderView(app.renderTimer)
+		var view viewFunc
+		switch app.state.activeView {
+		case 0:
+			view = app.renderTimer
+		case 1, 2, 3:
+			view = func() string { return "table " + app.viewNames[app.state.activeView] }
+		default:
+			view = func() string { return "you should not get here.." }
+		}
+		return app.renderView(view)
 	}
 }
 
@@ -185,8 +204,8 @@ func (app ApplicationV1) renderHelp() string {
 		lipgloss.Center,
 		app.models.help.FullHelpView([][]key.Binding{{
 			app.keys.switchGlobalCategory,
-			app.keys.tabNext,
-			app.keys.tabPrev,
+			app.keys.nextTab,
+			app.keys.prevTab,
 			app.keys.quit,
 			app.keys.closeHelp,
 		}}),
@@ -221,13 +240,15 @@ func (app ApplicationV1) renderNavigation() string {
 	return doc.String()
 }
 
-func (app ApplicationV1) renderView(viewRenderer func() string) string {
+type viewFunc func() string
+
+func (app ApplicationV1) renderView(view viewFunc) string {
 	viewHeight, viewWidth := app.state.viewHeight, app.state.viewWidth
 	nav := app.renderNavigation()
 	_, navHeight := lipgloss.Size(nav)
 	viewHeight -= navHeight - 1 // navigation height + one newline
 	doc := strings.Builder{}
-	doc.WriteString(lipgloss.Place(viewWidth, viewHeight, lipgloss.Center, lipgloss.Center, viewRenderer()))
+	doc.WriteString(lipgloss.Place(viewWidth, viewHeight, lipgloss.Center, lipgloss.Center, view()))
 	doc.WriteString("\n")
 	doc.WriteString(lipgloss.Place(viewWidth, navHeight, lipgloss.Center, lipgloss.Center, nav+" "+app.renderInlineHelp()))
 	return styleWindow.Render(doc.String())

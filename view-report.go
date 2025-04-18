@@ -47,13 +47,13 @@ func (view *reportView) Update(message tea.Msg) tea.Cmd {
 		return view.updateData()
 	case tea.KeyMsg:
 		switch {
-		case key.Matches(msg, view.keymap.previousPage):
+		case key.Matches(msg, view.keymap.prevReportPage):
 			view.page--
 			return view.updateData()
-		case key.Matches(msg, view.keymap.nextPage):
+		case key.Matches(msg, view.keymap.nextReportPage):
 			view.page = min(view.page+1, 0)
 			return view.updateData()
-		case key.Matches(msg, view.keymap.tabNext, view.keymap.tabPrev):
+		case key.Matches(msg, view.keymap.nextTab, view.keymap.prevTab):
 			return view.updateData()
 		}
 	}
@@ -88,5 +88,5 @@ func (view *reportView) Init() tea.Cmd {
 }
 
 func (view *reportView) HelpKeys() []key.Binding {
-	return []key.Binding{view.keymap.nextPage, view.keymap.previousPage}
+	return []key.Binding{view.keymap.nextReportPage, view.keymap.prevReportPage}
 }

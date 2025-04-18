@@ -107,9 +107,9 @@ func (app Application) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 				app.l.Error("failed to update default category", slog.String("error", err.Error()))
 			}
 			return app, func() tea.Msg { return updateDefaultCategoryMsg{categoryID: app.defaultCategory} }
-		case key.Matches(msg, app.keymap.tabNext):
+		case key.Matches(msg, app.keymap.nextTab):
 			app.activeView = min(app.activeView+1, len(app.views)-1)
-		case key.Matches(msg, app.keymap.tabPrev):
+		case key.Matches(msg, app.keymap.prevTab):
 			app.activeView = max(app.activeView-1, 0)
 		case key.Matches(msg, app.keymap.quit):
 			app.quitting = true
@@ -125,7 +125,7 @@ func (app Application) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 	return app, cmd
 }
 
-var globalHelpKeys = []key.Binding{appKeyMap.switchGlobalCategory, appKeyMap.tabNext, appKeyMap.tabPrev, appKeyMap.quit, appKeyMap.closeHelp}
+var globalHelpKeys = []key.Binding{appKeyMap.switchGlobalCategory, appKeyMap.nextTab, appKeyMap.prevTab, appKeyMap.quit, appKeyMap.closeHelp}
 
 func (app Application) helpView() string {
 	return app.help.FullHelpView([][]key.Binding{

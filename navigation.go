@@ -35,10 +35,10 @@ func (app Application) renderNavigation() string {
 type appKeys struct {
 	switchGlobalCategory key.Binding
 	switchTaskCategory   key.Binding
-	tabNext              key.Binding
-	tabPrev              key.Binding
-	previousPage         key.Binding
-	nextPage             key.Binding
+	nextTab              key.Binding
+	prevTab              key.Binding
+	prevReportPage       key.Binding
+	nextReportPage       key.Binding
 	toggleTaskTimer      key.Binding
 	openHelp             key.Binding
 	closeHelp            key.Binding
@@ -58,19 +58,19 @@ var appKeyMap = appKeys{
 		key.WithKeys("c"),
 		key.WithHelp("c", "switch category"),
 	),
-	tabNext: key.NewBinding(
+	nextTab: key.NewBinding(
 		key.WithKeys("right", "l", "n"),
 		key.WithHelp("n", "next view"),
 	),
-	tabPrev: key.NewBinding(
+	prevTab: key.NewBinding(
 		key.WithKeys("left", "h", "p"),
 		key.WithHelp("h", "previous view"),
 	),
-	nextPage: key.NewBinding(
+	nextReportPage: key.NewBinding(
 		key.WithKeys("down", "j"),
 		key.WithHelp("j", "forward in time"),
 	),
-	previousPage: key.NewBinding(
+	prevReportPage: key.NewBinding(
 		key.WithKeys("up", "k"),
 		key.WithHelp("k", "back in time"),
 	),
