@@ -9,6 +9,7 @@ var (
 	navColorBG         = lipgloss.AdaptiveColor{Light: "254", Dark: "16"}
 	navColorFGActive   = lipgloss.AdaptiveColor{Light: "22", Dark: "40"}
 	navColorFGInactive = lipgloss.AdaptiveColor{Light: "2", Dark: "243"}
+	styleLoader        = lipgloss.NewStyle().Faint(true).Align(lipgloss.Center)
 	styleNavCap        = lipgloss.NewStyle().Foreground(navColorBG)
 	styleModeIndicator = lipgloss.NewStyle().Background(navColorBG).Foreground(navColorFGInactive).Padding(0, 0, 0, 1)
 	styleNavJoiner     = lipgloss.NewStyle().Background(navColorBG).Foreground(navColorFGInactive)
