@@ -14,7 +14,7 @@ var (
 	styleNavJoiner     = lipgloss.NewStyle().Background(navColorBG).Foreground(navColorFGInactive)
 	styleNavInactive   = lipgloss.NewStyle().Background(navColorBG).Foreground(navColorFGInactive).Padding(0, 1)
 	styleNavActive     = lipgloss.NewStyle().Background(navColorBG).Foreground(navColorFGActive).Padding(0, 1)
-	styleWindow        = lipgloss.NewStyle().Padding(0, 0).Margin(0, 0).Align(lipgloss.Center, lipgloss.Center)
+	styleWindow        = lipgloss.NewStyle().Padding(0, 0, 0, 0).Margin(0, 0).Align(lipgloss.Center, lipgloss.Center)
 	styleTimerLabel    = lipgloss.NewStyle().Bold(true).Width(10)
 	styleTableCell     = lipgloss.NewStyle().Padding(0, 1)
 	styleTableSumRow   = styleTableCell.Background(lipgloss.AdaptiveColor{Dark: "235", Light: "250"}).Foreground(lipgloss.AdaptiveColor{Dark: "195", Light: "20"})
@@ -27,5 +27,7 @@ var (
 		FullDesc:       lipgloss.NewStyle().Foreground(lipgloss.AdaptiveColor{Light: "238", Dark: "250"}),
 		FullSeparator:  lipgloss.NewStyle().Foreground(navColorFGInactive),
 	}
-	styleTimerContainer = lipgloss.NewStyle().Border(lipgloss.DoubleBorder()).Padding(1, 2)
+	styleTimerContainer  = lipgloss.NewStyle().Border(lipgloss.DoubleBorder()).Padding(1, 2)
+	styleReportContainer = lipgloss.NewStyle().Padding(1, 0, 0, 0)
+	styleReportTitle     = lipgloss.NewStyle().Margin(0, 2)
 )

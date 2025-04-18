@@ -10,7 +10,10 @@ import (
 	"github.com/charmbracelet/bubbles/key"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+	"github.com/charmbracelet/lipgloss/table"
 )
+
+type reportStyleFunc func(row, col int, rowData []string) lipgloss.Style
 
 type appState struct {
 	screenWidth      int
@@ -23,6 +26,13 @@ type appState struct {
 	previousRecordID int64
 	showHelp         bool
 	quitting         bool
+	// reporting data fields
+	reportLoading bool
+	reportPage    []int
+	reportTitle   string
+	reportHeaders []string
+	reportStyle   reportStyleFunc
+	reportRows    [][]string
 }
 
 type models struct {
@@ -78,6 +88,24 @@ func (app ApplicationV1) Init() tea.Cmd {
 func (app ApplicationV1) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 	var commands []tea.Cmd
 	switch msg := message.(type) {
+	case reportDataMsg:
+		if app.state.activeView != msg.viewID {
+			// view changed already. Not relevant anymore.
+			return app, nil
+		}
+		if app.reportPageNo() != msg.pageNo {
+			// page changed already. Not relevant anymore.
+			return app, nil
+		}
+		if app.settings.DefaultCategoryID != msg.categoryID {
+			// category changed already. Not relevant anymore
+			return app, nil
+		}
+		app.state.reportRows = msg.rows
+		app.state.reportHeaders = msg.headers
+		app.state.reportTitle = msg.title
+		app.state.reportStyle = msg.style
+		app.state.reportLoading = false
 	case reHydrateMsg:
 		app.state.timerCategoryID = msg.category
 		app.state.activeRecordID = msg.recordID
@@ -122,6 +150,10 @@ func (app ApplicationV1) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 			app.state.activeView++
 			if app.state.activeView >= len(app.viewNames) {
 				app.state.activeView = 0
+			}
+			app.state.reportLoading = true
+			if cmd := app.updateReportData(); cmd != nil {
+				commands = append(commands, cmd)
 			}
 		case key.Matches(msg, app.keys.prevTab):
 			app.state.activeView--
@@ -178,6 +210,60 @@ func (app ApplicationV1) updateTimerCategoryID(id int64) tea.Cmd {
 	}
 }
 
+func (app ApplicationV1) updateReportData() tea.Cmd {
+	var (
+		viewID     = app.state.activeView
+		pageNo     = app.reportPageNo()
+		categoryID = app.settings.DefaultCategoryID
+		mapperFunc func([]Record) [][]string
+		dateFunc   func(int) (time.Time, time.Time)
+		headerFunc func() []string
+		titleFunc  func(int) string
+		styleFunc  reportStyleFunc
+	)
+	switch app.state.activeView {
+	case 1: // Weekly
+		dateFunc = weeklyFilter
+		headerFunc = weeklyReportHeaders
+		titleFunc = weeklyReportTitle
+		styleFunc = weeklyReportStyle
+		mapperFunc = weeklyRows
+	case 2: // Monthly
+		dateFunc = monthlyFilter
+		headerFunc = monthlyReportHeaders
+		titleFunc = monthlyReportTitle
+		styleFunc = monthlyReportStyle
+		mapperFunc = monthlyRows
+	case 3: // Yearly
+		dateFunc = yearlyFilter
+		headerFunc = yearlyReportHeaders
+		titleFunc = yearlyReportTitle
+		styleFunc = yearlyReportStyle
+		mapperFunc = yearlyRows
+	default:
+		// not a reporting view
+		return nil
+	}
+	return func() tea.Msg {
+		from, before := dateFunc(pageNo)
+		res, err := app.db.RecordsInCategory(from, before, categoryID)
+		if err != nil {
+			app.l.Error("failed to fetch records", slog.String("error", err.Error()))
+			return tea.Quit()
+		}
+		rows := mapperFunc(res)
+		return reportDataMsg{
+			viewID:     viewID,
+			pageNo:     pageNo,
+			categoryID: categoryID,
+			title:      titleFunc(pageNo),
+			headers:    headerFunc(),
+			rows:       rows,
+			style:      styleFunc,
+		}
+	}
+}
+
 func (app ApplicationV1) View() string {
 	switch {
 	case app.state.showHelp:
@@ -188,9 +274,9 @@ func (app ApplicationV1) View() string {
 		case 0:
 			view = app.renderTimer
 		case 1, 2, 3:
-			view = func() string { return "table " + app.viewNames[app.state.activeView] }
+			view = app.renderReport
 		default:
-			view = func() string { return "you should not get here.." }
+			view = func(int, int) string { return "you should not get here.." }
 		}
 		return app.renderView(view)
 	}
@@ -261,24 +347,24 @@ func (app ApplicationV1) renderNavigation() string {
 	return doc.String()
 }
 
-type viewFunc func() string
+type viewFunc func(width int, height int) string
 
 func (app ApplicationV1) renderView(view viewFunc) string {
 	viewHeight, viewWidth := app.state.viewHeight, app.state.viewWidth
 	nav := app.renderNavigation()
 	_, navHeight := lipgloss.Size(nav)
-	viewHeight -= navHeight - 1 // navigation height + one newline
+	viewHeight -= navHeight - 2 // and couple newlines
 	doc := strings.Builder{}
-	doc.WriteString(lipgloss.Place(viewWidth, viewHeight, lipgloss.Center, lipgloss.Center, view()))
+	doc.WriteString(lipgloss.Place(viewWidth, viewHeight, lipgloss.Center, lipgloss.Center, view(viewWidth, viewHeight)))
 	doc.WriteString("\n")
 	doc.WriteString(lipgloss.Place(viewWidth, navHeight, lipgloss.Center, lipgloss.Center, nav+" "+app.renderInlineHelp()))
 	return styleWindow.Render(doc.String())
 }
 
-func (app ApplicationV1) renderTimer() string {
+func (app ApplicationV1) renderTimer(width, _ int) string {
 	var doc strings.Builder
 	cat := activeCategory(app.categories, app.state.timerCategoryID)
-	w := min(40, app.state.viewWidth)
+	w := min(40, width)
 	elapsed := app.models.timer.View()
 	started := app.models.timer.Since()
 	style := styleTimerContainer.Width(w).BorderForeground(cat.ForegroundColor())
@@ -303,7 +389,48 @@ func (app ApplicationV1) renderTimer() string {
 	return style.Render(doc.String())
 }
 
-func (app ApplicationV1) activeCategory(id int64) Category {
+func (app ApplicationV1) renderReport(viewWidth, viewHeight int) string {
+	if app.state.reportLoading {
+		return "... loading ..."
+	}
+	container := styleReportContainer.Width(viewWidth).Height(viewHeight)
+	tableWidth := viewWidth - container.GetHorizontalFrameSize()
+	tableHeight := viewHeight - container.GetVerticalFrameSize()
+	cat := app.category(app.settings.DefaultCategoryID)
+	headers := app.state.reportHeaders
+	rows := app.state.reportRows
+	styleFunc := app.state.reportStyle
+	tbl := table.New().
+		Width(tableWidth).
+		Height(tableHeight).
+		Headers(headers...).
+		Rows(rows...).
+		StyleFunc(func(r, c int) lipgloss.Style {
+			if r == -1 {
+				return styleFunc(r, c, headers)
+			}
+			return styleFunc(r, c, rows[r])
+		})
+	catStyle := lipgloss.NewStyle().Foreground(cat.ForegroundColor())
+	var title strings.Builder
+	title.WriteString(catStyle.Render(cat.Name))
+	title.WriteString(": ")
+	title.WriteString(app.state.reportTitle)
+	var doc strings.Builder
+	doc.WriteString(styleReportTitle.Render(title.String()))
+	doc.WriteString("\n")
+	doc.WriteString(tbl.Render())
+	return container.Render(doc.String())
+}
+
+func (app ApplicationV1) reportPageNo() int {
+	if app.state.activeView >= len(app.state.reportPage) {
+		return 0
+	}
+	return app.state.reportPage[app.state.activeView]
+}
+
+func (app ApplicationV1) category(id int64) Category {
 	for _, cat := range app.categories {
 		if cat.ID == id {
 			return cat

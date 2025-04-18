@@ -38,6 +38,20 @@ type reHydrateMsg struct {
 	category int64
 }
 
+// reportDataMessage contains data for reporting table.
+type reportDataMsg struct {
+	// viewID identifies the target report view. If current state view
+	// isn't matching, then someone may have cycled the views very quickly and
+	// the data in this message isn't needed anymore.
+	viewID     int
+	pageNo     int
+	categoryID int64
+	title      string
+	headers    []string
+	rows       [][]string
+	style      reportStyleFunc
+}
+
 // viewAreaSizeMsg reports a change to the view area (usable area for view data)
 type viewAreaSizeMsg struct {
 	width, height int

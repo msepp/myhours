@@ -56,6 +56,9 @@ func Run(db Database, options ...Option) error {
 			help:  help.New(),
 			timer: newTimerModel(time.Millisecond * 250),
 		},
+		state: appState{
+			reportPage: make([]int, 4),
+		},
 		categories: app.categories,
 		keys:       appKeyMap,
 		viewNames: []string{
