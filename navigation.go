@@ -4,6 +4,7 @@ import (
 	"strings"
 
 	"github.com/charmbracelet/bubbles/key"
+	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 )
 
@@ -47,43 +48,43 @@ type appKeys struct {
 
 var appKeyMap = appKeys{
 	openHelp: key.NewBinding(
-		key.WithKeys("H"),
-		key.WithHelp("H", "help"),
+		key.WithKeys(tea.KeyF1.String()),
+		key.WithHelp("f1", "Help"),
 	),
 	closeHelp: key.NewBinding(
-		key.WithKeys("H"),
-		key.WithHelp("H", "close help"),
+		key.WithKeys(tea.KeyF1.String()),
+		key.WithHelp("f1", "Close help"),
 	),
 	switchGlobalCategory: key.NewBinding(
 		key.WithKeys("c"),
-		key.WithHelp("c", "switch category"),
+		key.WithHelp("c", "Switch category"),
 	),
 	nextTab: key.NewBinding(
-		key.WithKeys("right", "l", "n"),
-		key.WithHelp("n", "next view"),
+		key.WithKeys("right", "l"),
+		key.WithHelp("l, →", "Next view"),
 	),
 	prevTab: key.NewBinding(
 		key.WithKeys("left", "h", "p"),
-		key.WithHelp("h", "previous view"),
+		key.WithHelp("h, ←", "Previous view"),
 	),
 	nextReportPage: key.NewBinding(
 		key.WithKeys("down", "j"),
-		key.WithHelp("j", "forward in time"),
+		key.WithHelp("j, ↓", "Forward in time"),
 	),
 	prevReportPage: key.NewBinding(
 		key.WithKeys("up", "k"),
-		key.WithHelp("k", "back in time"),
+		key.WithHelp("k, ↑", "Back in time"),
 	),
 	toggleTaskTimer: key.NewBinding(
 		key.WithKeys("s"),
-		key.WithHelp("s", "start/stop task"),
+		key.WithHelp("s", "Start/stop task"),
 	),
 	switchTaskCategory: key.NewBinding(
-		key.WithKeys("a"),
-		key.WithHelp("a", "switch task category"),
+		key.WithKeys("t"),
+		key.WithHelp("t", "Switch task category"),
 	),
 	quit: key.NewBinding(
 		key.WithKeys("ctrl+c", "q"),
-		key.WithHelp("q", "quit"),
+		key.WithHelp("q", "Quit"),
 	),
 }

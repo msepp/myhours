@@ -197,18 +197,39 @@ func (app ApplicationV1) View() string {
 }
 
 func (app ApplicationV1) renderHelp() string {
+	h := app.models.help
+	h.Width = app.state.viewWidth
 	return lipgloss.Place(
 		app.state.viewWidth,
 		app.state.viewHeight,
 		lipgloss.Center,
 		lipgloss.Center,
-		app.models.help.FullHelpView([][]key.Binding{{
-			app.keys.switchGlobalCategory,
-			app.keys.nextTab,
-			app.keys.prevTab,
-			app.keys.quit,
-			app.keys.closeHelp,
-		}}),
+		// The layout here is really hacky with the pseudo keys to create segment
+		// titles, but I'm so lazy I can't be bothered to do it right when this
+		// works just fine.
+		h.FullHelpView([][]key.Binding{
+			// global keys
+			{
+				key.NewBinding(key.WithHelp("", "Global:"), key.WithKeys("")),
+				app.keys.switchGlobalCategory,
+				app.keys.nextTab,
+				app.keys.prevTab,
+				app.keys.quit,
+				app.keys.closeHelp,
+			},
+			// view specific keys
+			{
+				// timer view keys
+				key.NewBinding(key.WithHelp("", "Timer:"), key.WithKeys("")),
+				app.keys.toggleTaskTimer,
+				app.keys.switchTaskCategory,
+				key.NewBinding(key.WithHelp("", ""), key.WithKeys("")),
+				key.NewBinding(key.WithHelp("", "Reports:"), key.WithKeys("")),
+				// reporting keys
+				app.keys.prevReportPage,
+				app.keys.nextReportPage,
+			},
+		}),
 	)
 }
 
