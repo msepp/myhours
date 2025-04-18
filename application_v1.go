@@ -146,12 +146,31 @@ func (app ApplicationV1) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 			app.state.showHelp = !app.state.showHelp
 			app.keys.openHelp.SetEnabled(!app.state.showHelp)
 			app.keys.closeHelp.SetEnabled(app.state.showHelp)
+		case key.Matches(msg, app.keys.nextReportPage):
+			pageNo := app.reportPageNo() + 1
+			if pageNo > 0 {
+				pageNo = 0
+			}
+			app.state.reportLoading = true
+			app.state.reportPage[app.state.activeView] = pageNo
+			if cmd := app.updateReportData(); cmd != nil {
+				commands = append(commands, cmd)
+			}
+		case key.Matches(msg, app.keys.prevReportPage):
+			pageNo := app.reportPageNo() - 1
+			app.state.reportLoading = true
+			app.state.reportPage[app.state.activeView] = pageNo
+			if cmd := app.updateReportData(); cmd != nil {
+				commands = append(commands, cmd)
+			}
 		case key.Matches(msg, app.keys.nextTab):
 			app.state.activeView++
 			if app.state.activeView >= len(app.viewNames) {
 				app.state.activeView = 0
 			}
 			app.state.reportLoading = true
+			app.keys.nextReportPage.SetEnabled(app.state.activeView > 0)
+			app.keys.prevReportPage.SetEnabled(app.state.activeView > 0)
 			if cmd := app.updateReportData(); cmd != nil {
 				commands = append(commands, cmd)
 			}
@@ -161,6 +180,8 @@ func (app ApplicationV1) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 				app.state.activeView = len(app.viewNames) - 1
 			}
 			app.state.reportLoading = true
+			app.keys.nextReportPage.SetEnabled(app.state.activeView > 0)
+			app.keys.prevReportPage.SetEnabled(app.state.activeView > 0)
 			if cmd := app.updateReportData(); cmd != nil {
 				commands = append(commands, cmd)
 			}
