@@ -94,7 +94,7 @@ func (m MyHours) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 			m.state.showHelp = !m.state.showHelp
 			m.keys.openHelp.SetEnabled(!m.state.showHelp)
 			m.keys.closeHelp.SetEnabled(m.state.showHelp)
-		case key.Matches(msg, m.keys.nextReportPage, m.keys.prevReportPage):
+		case key.Matches(msg, m.keys.nextReportPage):
 			pageNo := m.reportPageNo() + 1
 			if pageNo > 0 {
 				pageNo = 0
