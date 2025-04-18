@@ -1,3 +1,7 @@
+// Package sqlite implements myhours.Database on top of SQLite.
+//
+// Contains also utilities for initializing a new SQLite databases with the required
+// schema.
 package sqlite
 
 import (
@@ -117,7 +121,7 @@ func (db *SQLite) ImportRecords(records []myhours.Record) ([]int64, error) {
 			record.End.Format(time.RFC3339Nano),
 			record.Duration.String(),
 			record.CategoryID,
-			PtrNonZero(record.Notes),
+			ptrNonZero(record.Notes),
 		); err != nil {
 			if rollbackErr := tx.Rollback(); rollbackErr != nil {
 				db.l.Warn("failed to rollback transaction", slog.String("error", rollbackErr.Error()))
@@ -171,7 +175,7 @@ func (db *SQLite) FinishRecord(recordID int64, start, end time.Time, notes strin
 		start.In(time.UTC).Format(time.RFC3339Nano),
 		end.In(time.UTC).Format(time.RFC3339Nano),
 		end.Sub(start).String(),
-		PtrNonZero(notes),
+		ptrNonZero(notes),
 	)
 	if err != nil {
 		return fmt.Errorf("db.Exec: %w", err)

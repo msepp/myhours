@@ -7,11 +7,6 @@ type updateCategoriesMsg struct {
 	categories []Category
 }
 
-// updateDefaultCategoryMsg update the currently selected default category
-type updateDefaultCategoryMsg struct {
-	categoryID int64
-}
-
 // updateSettingsMsg updates current application settings
 type updateSettingsMsg struct {
 	settings Settings
@@ -31,8 +26,8 @@ type recordFinishMsg struct {
 	recordID int64
 }
 
-// reHydrateMsg is sent to select the initial active task
-type reHydrateMsg struct {
+// initTimerMsg is sent to select the initial active task
+type initTimerMsg struct {
 	recordID int64
 	since    time.Time
 	category int64
@@ -50,11 +45,6 @@ type reportDataMsg struct {
 	headers    []string
 	rows       [][]string
 	style      reportStyleFunc
-}
-
-// viewAreaSizeMsg reports a change to the view area (usable area for view data)
-type viewAreaSizeMsg struct {
-	width, height int
 }
 
 // timerTickMsg is a message that is sent on every timer timerTick.

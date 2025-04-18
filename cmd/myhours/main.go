@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	_ "embed"
 	"flag"
+	"fmt"
 	"log/slog"
 	"os"
 	"path"
@@ -12,26 +13,22 @@ import (
 	"strings"
 	"time"
 
+	tea "github.com/charmbracelet/bubbletea"
 	"github.com/msepp/myhours"
-	"github.com/msepp/myhours/sqlite"
+	"github.com/msepp/myhours/database/sqlite"
 )
-
-var logger = slog.New(slog.NewTextHandler(os.Stderr, nil))
-
-type importedRecord struct {
-	start    time.Time
-	duration time.Duration
-	category int
-	notes    string
-}
 
 func main() {
 	configDir, err := os.UserConfigDir()
 	if err != nil {
-		logger.Warn("failed to determine user config directory", slog.String("error", err.Error()))
+		_, _ = fmt.Fprintf(os.Stderr, "failed to get user config dir: %v\n", err)
+		os.Exit(1)
 	}
 	var (
+		logger     = slog.New(slog.DiscardHandler)
 		doImport   bool
+		verbose    bool
+		silent     bool
 		importFile = "import.txt"
 		dbLocation = path.Join(configDir, "my-hours-cli")
 		dbFile     = path.Join(dbLocation, "database.db")
@@ -39,9 +36,18 @@ func main() {
 	flag.StringVar(&dbFile, "db", dbFile, "Database location")
 	flag.BoolVar(&doImport, "import", doImport, "Run data import. -importFile selects import data location.")
 	flag.StringVar(&importFile, "importFile", importFile, "File with import data. Must contain lines in format '2006-01-02T15:04:05.999999999Z07:00,<duration>,categoryInt,notes'. Notes can not contain newlines.")
+	flag.BoolVar(&verbose, "v", false, "Verbose output")
+	flag.BoolVar(&silent, "s", false, "Silence all log output")
 	flag.Parse()
 
-	logger.Info("opening database", slog.String("database", dbFile))
+	if !silent {
+		if verbose {
+			logger = slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelDebug, AddSource: true}))
+		} else {
+			logger = slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelInfo}))
+		}
+	}
+	logger.Debug("opening database", slog.String("database", dbFile))
 	// Initialize the database
 	var dbConn *sql.DB
 	if dbConn, err = sqlite.InitiateSQLiteDatabase(dbFile); err != nil {
@@ -52,7 +58,7 @@ func main() {
 	// If user wants to do import, do it now that we know we have a destination
 	// database ready.
 	if doImport {
-		logger.Info("running import", slog.String("from", importFile), slog.String("to", dbFile))
+		logger.Debug("running import", slog.String("from", importFile), slog.String("to", dbFile))
 		var f *os.File
 		if f, err = os.Open(importFile); err != nil {
 			logger.Error("reading import file failed", slog.String("error", err.Error()))
@@ -100,10 +106,12 @@ func main() {
 		logger.Info("importing complete", slog.Int("numberOfEntries", len(result)))
 		os.Exit(0)
 	}
-	logger.Info("database initialized", slog.String("database", dbFile))
+	logger.Debug("database initialized", slog.String("database", dbFile))
 	// Run the application with given database
-	if err = myhours.Run(db, myhours.UseLogger(logger)); err != nil {
+	mh := myhours.New(db, myhours.UseLogger(logger))
+	if _, err = tea.NewProgram(mh, tea.WithAltScreen()).Run(); err != nil {
 		logger.Error("run error", slog.String("error", err.Error()))
 		os.Exit(1)
 	}
+	logger.Debug("Have a good day!")
 }

@@ -7,23 +7,18 @@ import (
 	"github.com/msepp/myhours"
 )
 
-// Val returns the value of any pointer, or the zero value of the type if pointer
+// val returns the value of any pointer, or the zero value of the type if pointer
 // is nil.
-func Val[T any](p *T) T {
+func val[T any](p *T) T {
 	if p == nil {
 		return *new(T)
 	}
 	return *p
 }
 
-// Ptr returns a pointer to a copy of given value.
-func Ptr[T any](v T) *T {
-	return &v
-}
-
-// PtrNonZero returns a pointer a copy of given value or nil if value is the
+// ptrNonZero returns a pointer a copy of given value or nil if value is the
 // zero value of the type.
-func PtrNonZero[T comparable](p T) *T {
+func ptrNonZero[T comparable](p T) *T {
 	if *new(T) == p {
 		return nil
 	}
@@ -44,7 +39,7 @@ func scanRecord(row scanner) (*myhours.Record, error) {
 	if err := row.Scan(&id, &start, &end, &duration, &categoryID, &notes); err != nil {
 		return nil, fmt.Errorf("row.Scan: %w", err)
 	}
-	record := myhours.Record{ID: id, CategoryID: categoryID, Notes: Val(notes)}
+	record := myhours.Record{ID: id, CategoryID: categoryID, Notes: val(notes)}
 	var err error
 	if record.Start, err = time.Parse(time.RFC3339Nano, start); err != nil {
 		return nil, fmt.Errorf("time.Parse(start): %w", err)
