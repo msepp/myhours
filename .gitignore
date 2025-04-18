@@ -1,0 +1,4 @@
+.vscode
+.idea
+*.sw[op]
+.DS_Store
