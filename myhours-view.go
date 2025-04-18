@@ -110,7 +110,7 @@ func (m MyHours) renderNavigation() string {
 	}
 	// current globally selected category shown at the start of the nav to give
 	// a clue on what's show in reports.
-	cat := m.category(m.settings.DefaultCategoryID)
+	cat := findCategory(m.categories, m.settings.DefaultCategoryID)
 	// then construct the navigation bar.
 	var doc strings.Builder
 	doc.WriteString(styleNavCap.Render("\uE0BA"))
@@ -154,7 +154,7 @@ func (m MyHours) renderTimer(width, _ int) string {
 	started := m.timer.started()
 	// we also show the category assigned to the task. If a task ID exists, this
 	// still allows swapping the category for it.
-	cat := m.category(m.state.timerCategoryID)
+	cat := findCategory(m.categories, m.state.timerCategoryID)
 	// now we build the actual view.
 	var doc strings.Builder
 	doc.WriteString(styleTimerLabel.Render("Tracking:"))
@@ -198,7 +198,7 @@ func (m MyHours) renderReport(width, height int) string {
 		tableWidth  = width - container.GetHorizontalFrameSize()
 		tableHeight = height - container.GetVerticalFrameSize()
 		// select currently active category, we'll render it also on top of the table.
-		cat      = m.category(m.settings.DefaultCategoryID)
+		cat      = findCategory(m.categories, m.settings.DefaultCategoryID)
 		catStyle = lipgloss.NewStyle().Foreground(cat.ForegroundColor())
 	)
 	// create the new table.

@@ -96,15 +96,47 @@ type MyHours struct {
 	timer      timer
 }
 
-func (m MyHours) reportPageNo() int {
-	if m.state.activeView >= len(m.state.reportPage) {
-		return 0
+func incMax(v, max int) int {
+	if v >= max {
+		return max
 	}
-	return m.state.reportPage[m.state.activeView]
+	return v + 1
 }
 
-func (m MyHours) category(id int64) Category {
-	for _, cat := range m.categories {
+func decMax(v, max int) int {
+	if v > max {
+		return max
+	}
+	return v - 1
+}
+
+func incWrap(v, min, max int) int {
+	switch {
+	case v >= max || v < min:
+		return min
+	default:
+		return v + 1
+	}
+}
+
+func decWrap(v, min, max int) int {
+	switch {
+	case v <= min || v > max:
+		return max
+	default:
+		return v - 1
+	}
+}
+
+func byIndex[T comparable](set []T, index int) T {
+	if index <= 0 || index >= len(set) {
+		return *new(T)
+	}
+	return set[index]
+}
+
+func findCategory(categories []Category, id int64) Category {
+	for _, cat := range categories {
 		if cat.ID == id {
 			return cat
 		}
@@ -112,17 +144,17 @@ func (m MyHours) category(id int64) Category {
 	return Category{ID: 0, Name: "unknown"}
 }
 
-func (m MyHours) nextCategoryID(categoryID int64) int64 {
+func nextCategoryID(categories []Category, currentID int64) int64 {
 	var idx int
-	for idx = 0; idx < len(m.categories); idx++ {
-		if m.categories[idx].ID == categoryID {
+	for idx = 0; idx < len(categories); idx++ {
+		if categories[idx].ID == currentID {
 			break
 		}
 	}
-	if idx >= len(m.categories)-1 {
+	if idx >= len(categories)-1 {
 		idx = 0
 	} else {
 		idx++
 	}
-	return m.categories[idx].ID
+	return categories[idx].ID
 }

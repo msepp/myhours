@@ -127,9 +127,13 @@ func (m MyHours) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 		// database operations into asynchronous functions.
 		switch {
 		case key.Matches(msg, m.keys.switchTaskCategory):
-			commands = append(commands, m.updateTimerCategoryID(m.nextCategoryID(m.state.timerCategoryID)))
+			next := nextCategoryID(m.categories, m.state.timerCategoryID)
+			commands = append(commands, m.updateTimerCategoryID(next))
 		case key.Matches(msg, m.keys.switchGlobalCategory):
-			commands = append(commands, m.updateGlobalCategoryID(m.nextCategoryID(m.settings.DefaultCategoryID)))
+			// switching the global category is based on stored default category
+			// setting.
+			next := nextCategoryID(m.categories, m.settings.DefaultCategoryID)
+			commands = append(commands, m.updateGlobalCategoryID(next))
 		case key.Matches(msg, m.keys.openHelp, m.keys.closeHelp):
 			m.state.showHelp = !m.state.showHelp
 			// when help changes state, we disable/enable the show/close help
@@ -140,21 +144,13 @@ func (m MyHours) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 		case key.Matches(msg, m.keys.nextReportPage):
 			// report page change requested. This should trigger re-fetching of
 			// data if page actually changed. Max page number is zero (latest).
-			pageNo := m.reportPageNo()
-			switch {
-			case pageNo == 0:
-				// if page number is already at zero, we don't need to reload data
-				// and can skip this update.
+			var pageNo int
+			if pageNo = m.reportPageNo(); pageNo == 0 {
 				return m, nil
-			case pageNo >= -1:
-				// if page number is -1 or bigger (covering our bases here, if
-				// page number somehow went above zero), we set to zero.
-				pageNo = 0
-			default:
-				// just select next page.
-				pageNo++
 			}
-			m.state.reportPage[m.state.activeView] = pageNo
+			// increment page number, up to maximum. This should take care of
+			// seemingly impossible situation where pageNo would be positive non-zero.
+			m.state.reportPage[m.state.activeView] = incMax(pageNo, 0)
 			// request the update of report data.
 			if cmd := m.updateReportData(); cmd != nil {
 				m.state.reportLoading = true
@@ -163,17 +159,9 @@ func (m MyHours) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 		case key.Matches(msg, m.keys.prevReportPage):
 			// report page change requested. This should trigger re-fetching of
 			// data if page actually changed.
-			pageNo := m.reportPageNo()
-			switch {
-			case pageNo >= 0:
-				// if page number is zero or above, go straight to -1. This will
-				// cover situations if somehow page number got above zero.
-				return m, nil
-			default:
-				// just select previous page.
-				pageNo--
-			}
-			m.state.reportPage[m.state.activeView] = pageNo
+			// decrement page number by one for the previous page, or use max if
+			// value is somehow positive non-zero (which it should never be)
+			m.state.reportPage[m.state.activeView] = decMax(m.reportPageNo(), 0)
 			// and re-request report data update.
 			if cmd := m.updateReportData(); cmd != nil {
 				m.state.reportLoading = true
@@ -181,10 +169,7 @@ func (m MyHours) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 			}
 		case key.Matches(msg, m.keys.nextTab):
 			// select next active tab. We allow wrapping back to start.
-			m.state.activeView++
-			if m.state.activeView >= len(m.viewNames) {
-				m.state.activeView = 0
-			}
+			m.state.activeView = incWrap(m.state.activeView, 0, len(m.viewNames)-1)
 			// enable/disable keys for report activities based on if view is
 			// currently a reporting view or not.
 			m.keys.nextReportPage.SetEnabled(m.state.activeView > 0)
@@ -196,10 +181,7 @@ func (m MyHours) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 			}
 		case key.Matches(msg, m.keys.prevTab):
 			// select previous tab. Allow wrapping straight to last.
-			m.state.activeView--
-			if m.state.activeView < 0 {
-				m.state.activeView = len(m.viewNames) - 1
-			}
+			m.state.activeView = decWrap(m.state.activeView, 0, len(m.viewNames)-1)
 			// enable/disable keys for report activities based on if view is
 			// currently a reporting view or not.
 			m.keys.nextReportPage.SetEnabled(m.state.activeView > 0)
@@ -315,4 +297,9 @@ func (m MyHours) updateReportData() tea.Cmd {
 			style:      r.styles,
 		}
 	}
+}
+
+// reportPageNo returns the active page number for a report view.
+func (m MyHours) reportPageNo() int {
+	return byIndex(m.state.reportPage, m.state.activeView)
 }
