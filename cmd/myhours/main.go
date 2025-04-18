@@ -82,7 +82,8 @@ func main() {
 				logger.Error("invalid start time", slog.String("error", err.Error()))
 				os.Exit(2)
 			}
-			if entry.Duration, err = time.ParseDuration(pcs[1]); err != nil {
+			var duration time.Duration
+			if duration, err = time.ParseDuration(pcs[1]); err != nil {
 				logger.Error("invalid duration", slog.String("error", err.Error()))
 				os.Exit(2)
 			}
@@ -91,7 +92,7 @@ func main() {
 				os.Exit(2)
 			}
 			entry.Notes = strings.TrimSpace(pcs[3])
-			entry.End = entry.Start.Add(entry.Duration)
+			entry.End = entry.Start.Add(duration)
 			entries = append(entries, entry)
 		}
 		if scanner.Err() != nil {

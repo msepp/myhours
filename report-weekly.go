@@ -130,9 +130,10 @@ func newWeeklySummary(records []Record) []weeklySummary {
 				})
 			}
 		}
-		cw.total += record.Duration
+		d := record.Duration()
+		cw.total += d
 		cd := &cw.days[wd]
-		cd.total += record.Duration
+		cd.total += d
 		if record.Notes != "" {
 			cd.notes = append(cd.notes, record.Notes)
 		}

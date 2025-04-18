@@ -14,8 +14,6 @@ type Record struct {
 	// End datetime, when recording finished. If zero, record is considered to be
 	// active still, but prefer Finished method.
 	End time.Time
-	// Duration calculated from start & end.
-	Duration time.Duration
 	// CategoryID defines the category for the recorded time.
 	CategoryID int64
 	// Notes for this particular record.
@@ -27,16 +25,19 @@ func (r Record) Finished() bool {
 	return !r.End.IsZero()
 }
 
+// Duration of the record. If Start or End is zero, return value is zero.
+func (r Record) Duration() time.Duration {
+	if r.Start.IsZero() || r.End.IsZero() {
+		return 0
+	}
+	return r.End.Sub(r.Start)
+}
+
 // Validate Record for any inconsistencies. Returns error with validation failure
 // reason if Record is somehow broken.
 func (r Record) Validate() error {
 	if r.Start.IsZero() {
 		return errors.New("start time must be non-zero")
-	}
-	if !r.End.IsZero() || r.Duration > 0 {
-		if r.End.Sub(r.Start) != r.Duration {
-			return errors.New("duration does not match start&end")
-		}
 	}
 	return nil
 }

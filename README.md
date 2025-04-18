@@ -19,6 +19,7 @@ This is a simple leisure project to build a small CLI for tracking daily hours a
 ## Roadmap
 
 Everything is done on best effort, when-I-feel-like-it basis. With that said, some things that could be taken care of in the near future:
-* Cleanup the reporting models. It's too complicated.
-* Cleanup the signaling inside the app, it's a mixture of key events and internal messages. Horrible.
-* Fixing broken records (if you accidentally leave the timer running over night for example) needs to be done via SQL. This could be fixed with as simple CLI option for example, similar to import.
+* Support adding custom categories
+  * Category selecting needs to be better if we there's more than 3, or custom amount.
+* Notes are missing. Would be nice to be able to record for example issue ids per record.
+* No way to amend records currently, except going into the database directly.

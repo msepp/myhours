@@ -4,9 +4,14 @@ import (
 	"time"
 )
 
+// Setting identifies a value in application configuration settings.
+type Setting string
+
+func (s Setting) String() string { return string(s) }
+
 const (
 	// SettingDefaultCategory is the setting key for default category.
-	SettingDefaultCategory = "default_category"
+	SettingDefaultCategory Setting = "default_category"
 )
 
 // Database defines the database access requirements for stopwatch.
@@ -39,7 +44,7 @@ type Database interface {
 	// Categories returns all available categories.
 	Categories() ([]Category, error)
 	// UpdateSetting updates a configuration setting value identified by key.
-	UpdateSetting(key string, value string) error
+	UpdateSetting(key Setting, value string) error
 	// Settings returns application settings
 	Settings() (*Settings, error)
 }

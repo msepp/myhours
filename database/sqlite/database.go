@@ -23,15 +23,15 @@ import (
 var defaultDB []byte
 
 const (
-	selectFullRecord       = `SELECT "id", "start", "end", "duration", "category", "notes" FROM records`
+	selectFullRecord       = `SELECT "id", "start", "end", "category", "notes" FROM records`
 	queryActiveRecord      = selectFullRecord + ` WHERE "end" IS NULL ORDER BY id DESC LIMIT 1`
 	queryRecords           = selectFullRecord + ` WHERE "start" > $1 AND "end" < $2 ORDER BY start ASC`
 	queryRecordsOfCategory = selectFullRecord + ` WHERE "start" > $1 AND "end" < $2 AND "category" = $3 ORDER BY start ASC`
 	queryCategories        = `SELECT "id", "name", "color_dark_bg", "color_dark_fg", "color_light_bg", "color_light_fg" FROM categories ORDER BY "id" ASC`
-	insertFullRecord       = `INSERT INTO records ("start", "end", "duration", "category", "notes") VALUES ($1, $2, $3, $4, $5) RETURNING id`
+	insertFullRecord       = `INSERT INTO records ("start", "end", "category", "notes") VALUES ($1, $2, $3, $4) RETURNING id`
 	insertActiveRecord     = `INSERT INTO records ("start", "category", "notes") VALUES ($1, $2, $3) RETURNING id`
 	updateRecordCategory   = `UPDATE records SET "category" = $2 WHERE "id" = $1`
-	updateRecordAsFinished = `UPDATE records SET "start" = $2, "end" = $3, "duration" = $4, "notes" = $5 WHERE "id" = $1`
+	updateRecordAsFinished = `UPDATE records SET "start" = $2, "end" = $3, "notes" = $4 WHERE "id" = $1`
 	queryConfigSettings    = `SELECT "key", "value" FROM configuration`
 	updateConfigSetting    = `UPDATE configuration SET "value" = $2 WHERE "key" = $1`
 )
@@ -119,7 +119,6 @@ func (db *SQLite) ImportRecords(records []myhours.Record) ([]int64, error) {
 		if res, err = tx.Exec(insertFullRecord,
 			record.Start.In(time.UTC).Format(time.RFC3339Nano),
 			record.End.Format(time.RFC3339Nano),
-			record.Duration.String(),
 			record.CategoryID,
 			ptrNonZero(record.Notes),
 		); err != nil {
@@ -174,7 +173,6 @@ func (db *SQLite) FinishRecord(recordID int64, start, end time.Time, notes strin
 		recordID,
 		start.In(time.UTC).Format(time.RFC3339Nano),
 		end.In(time.UTC).Format(time.RFC3339Nano),
-		end.Sub(start).String(),
 		ptrNonZero(notes),
 	)
 	if err != nil {
@@ -200,8 +198,8 @@ func (db *SQLite) Categories() ([]myhours.Category, error) {
 	return result, nil
 }
 
-func (db *SQLite) UpdateSetting(key string, value string) error {
-	if _, err := db.db.Exec(updateConfigSetting, key, value); err != nil {
+func (db *SQLite) UpdateSetting(key myhours.Setting, value string) error {
+	if _, err := db.db.Exec(updateConfigSetting, key.String(), value); err != nil {
 		return fmt.Errorf("db.Exec: %w", err)
 	}
 	return nil
@@ -219,7 +217,7 @@ func (db *SQLite) Settings() (*myhours.Settings, error) {
 		if err = rows.Scan(&key, &value); err != nil {
 			return nil, fmt.Errorf("rows.Scan: %w", err)
 		}
-		switch key {
+		switch myhours.Setting(key) {
 		case myhours.SettingDefaultCategory:
 			config.DefaultCategoryID, err = strconv.ParseInt(value, 10, 64)
 			if err != nil {

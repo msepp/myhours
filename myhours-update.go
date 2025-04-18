@@ -2,6 +2,7 @@ package myhours
 
 import (
 	"log/slog"
+	"strconv"
 	"time"
 
 	"github.com/charmbracelet/bubbles/key"
@@ -56,8 +57,13 @@ func (m MyHours) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 		m.categories = msg.categories
 	case updateSettingsMsg:
 		m.settings = msg.settings
-		if m.state.timerCategoryID == 0 {
+		// If there's no details of a record, let's swap the task category as well
+		// as convenience.
+		if m.state.activeRecordID == 0 || m.state.previousRecordID == 0 {
 			m.state.timerCategoryID = msg.settings.DefaultCategoryID
+		}
+		if cmd := m.updateReportData(); cmd != nil {
+			commands = append(commands, cmd)
 		}
 	case recordStartMsg:
 		m.state.activeRecordID = msg.recordID
@@ -82,6 +88,8 @@ func (m MyHours) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 		switch {
 		case key.Matches(msg, m.keys.switchTaskCategory):
 			commands = append(commands, m.updateTimerCategoryID(m.nextCategoryID(m.state.timerCategoryID)))
+		case key.Matches(msg, m.keys.switchGlobalCategory):
+			commands = append(commands, m.updateGlobalCategoryID(m.nextCategoryID(m.settings.DefaultCategoryID)))
 		case key.Matches(msg, m.keys.openHelp, m.keys.closeHelp):
 			m.state.showHelp = !m.state.showHelp
 			m.keys.openHelp.SetEnabled(!m.state.showHelp)
@@ -169,9 +177,22 @@ func (m MyHours) updateTimerCategoryID(id int64) tea.Cmd {
 		if m.state.activeRecordID > 0 {
 			if err := m.db.UpdateRecordCategory(m.state.activeRecordID, id); err != nil {
 				m.l.Error("failed to update active record category", slog.String("error", err.Error()))
+				return tea.Quit()
 			}
 		}
 		return timerCategoryMsg{categoryID: id}
+	}
+}
+
+func (m MyHours) updateGlobalCategoryID(id int64) tea.Cmd {
+	settings := m.settings
+	return func() tea.Msg {
+		if err := m.db.UpdateSetting(SettingDefaultCategory, strconv.FormatInt(id, 10)); err != nil {
+			m.l.Error("failed to update global category setting", slog.String("error", err.Error()))
+			return tea.Quit()
+		}
+		settings.DefaultCategoryID = id
+		return updateSettingsMsg{settings: settings}
 	}
 }
 

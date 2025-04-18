@@ -112,8 +112,8 @@ func newMonthlySummary(records []Record) []monthlySummary {
 		cm     *monthlySummary
 		cw     *weeklySummary
 	)
-	for _, r := range records {
-		start := r.Start.In(time.Local)
+	for _, record := range records {
+		start := record.Start.In(time.Local)
 		y, m, _ := start.Date()
 		if cm == nil || cm.month != m || cm.year != y {
 			first := time.Date(y, m, 1, 0, 0, 0, 0, time.Local)
@@ -152,7 +152,7 @@ func newMonthlySummary(records []Record) []monthlySummary {
 			}
 			cw = nil
 		}
-		_, weekNo := r.Start.In(time.Local).ISOWeek()
+		_, weekNo := record.Start.In(time.Local).ISOWeek()
 		if cw == nil || cw.weekNo != weekNo {
 			for i, w := range cm.weeks {
 				if w.weekNo == weekNo {
@@ -163,14 +163,15 @@ func newMonthlySummary(records []Record) []monthlySummary {
 				panic("week not set somehow!")
 			}
 		}
-		cm.total += r.Duration
-		cw.total += r.Duration
+		d := record.Duration()
+		cm.total += d
+		cw.total += d
 		date := start.Format(time.DateOnly)
 		for i := range cw.days {
 			if cw.days[i].date != date {
 				continue
 			}
-			cw.days[i].total += r.Duration
+			cw.days[i].total += d
 			break
 		}
 		wd := start.Weekday()
@@ -178,9 +179,9 @@ func newMonthlySummary(records []Record) []monthlySummary {
 			wd = 7
 		}
 		wd--
-		cw.days[wd].total += r.Duration
-		if r.Notes != "" {
-			cw.days[wd].notes = append(cw.days[wd].notes, r.Notes)
+		cw.days[wd].total += d
+		if record.Notes != "" {
+			cw.days[wd].notes = append(cw.days[wd].notes, record.Notes)
 		}
 	}
 	return months

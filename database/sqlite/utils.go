@@ -31,12 +31,12 @@ type scanner interface {
 
 func scanRecord(row scanner) (*myhours.Record, error) {
 	var (
-		id                   int64
-		start                string
-		end, duration, notes *string
-		categoryID           int64
+		id         int64
+		start      string
+		end, notes *string
+		categoryID int64
 	)
-	if err := row.Scan(&id, &start, &end, &duration, &categoryID, &notes); err != nil {
+	if err := row.Scan(&id, &start, &end, &categoryID, &notes); err != nil {
 		return nil, fmt.Errorf("row.Scan: %w", err)
 	}
 	record := myhours.Record{ID: id, CategoryID: categoryID, Notes: val(notes)}
@@ -47,11 +47,6 @@ func scanRecord(row scanner) (*myhours.Record, error) {
 	if end != nil {
 		if record.End, err = time.Parse(time.RFC3339Nano, *end); err != nil {
 			return nil, fmt.Errorf("time.Parse(end): %w", err)
-		}
-	}
-	if duration != nil {
-		if record.Duration, err = time.ParseDuration(*duration); err != nil {
-			return nil, fmt.Errorf("time.ParseDuration(duration): %w", err)
 		}
 	}
 	return &record, nil
