@@ -19,6 +19,15 @@ This is a simple leisure project to build a small CLI for tracking daily hours a
   * reports can be fetched independently per category.
 * Support importing data from a text file.
 
+## Install
+
+No pre-built binaries right now. Easiest install is with `go install`:
+
+```shell
+$> go install github.com/msepp/myhours/cmd/myhours@v0.1.0
+$> $GOPATH/bin/myhours -h
+```
+
 ## Roadmap
 
 Everything is done on best effort, when-I-feel-like-it basis. With that said, some things that could be taken care of in the near future:
