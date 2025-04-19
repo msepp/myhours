@@ -75,18 +75,6 @@ type yearlySummary struct {
 	total  time.Duration
 }
 
-func (r yearlySummary) dateRange() (string, string) {
-	if len(r.months) == 0 {
-		return "", ""
-	}
-	if len(r.months) == 1 {
-		return r.months[0].dateRange()
-	}
-	first, _ := r.months[0].dateRange()
-	_, last := r.months[len(r.months)-1].dateRange()
-	return first, last
-}
-
 func newYearlySummary(records []Record) []yearlySummary {
 	var (
 		years []yearlySummary

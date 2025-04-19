@@ -58,7 +58,7 @@ func (m timer) update(message tea.Msg) (timer, tea.Cmd) {
 func (m timer) view() string {
 	switch {
 	case m.running:
-		return "🕒 " + time.Now().Sub(m.t0).Truncate(time.Second).String()
+		return "🕒 " + time.Since(m.t0).Truncate(time.Second).String()
 	case m.t0.IsZero():
 		return "😴 Idle..."
 	default:

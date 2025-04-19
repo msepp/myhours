@@ -94,18 +94,6 @@ func (s monthlySummary) activeDays() int {
 	return active
 }
 
-func (s monthlySummary) dateRange() (string, string) {
-	if len(s.weeks) == 0 {
-		return "", ""
-	}
-	if len(s.weeks) == 1 {
-		return s.weeks[0].dateRange()
-	}
-	first, _ := s.weeks[0].dateRange()
-	_, last := s.weeks[len(s.weeks)-1].dateRange()
-	return first, last
-}
-
 func newMonthlySummary(records []Record) []monthlySummary {
 	var (
 		months []monthlySummary
