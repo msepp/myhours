@@ -1,5 +1,8 @@
 # My Hours
 
+[![Go build & test](https://github.com/msepp/myhours/actions/workflows/go.yml/badge.svg)](https://github.com/msepp/myhours/actions/workflows/go.yml)
+[![golangci-lint](https://github.com/msepp/myhours/actions/workflows/golangci-lint.yml/badge.svg)](https://github.com/msepp/myhours/actions/workflows/golangci-lint.yml)
+
 This is a simple leisure project to build a small CLI for tracking daily hours at work.
 
 **Key requirements**:
