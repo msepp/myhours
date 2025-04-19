@@ -5,6 +5,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/charmbracelet/bubbles/help"
 	"github.com/charmbracelet/bubbles/key"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/charmbracelet/lipgloss/table"
@@ -53,6 +54,7 @@ func (m MyHours) renderLoadingScreen(width, height int) string {
 func (m MyHours) renderHelp(width, _ int) string {
 	h := m.help
 	h.Width = width
+	keys := newKeymap()
 	return lipgloss.Place(
 		m.state.viewWidth,
 		m.state.viewHeight,
@@ -65,23 +67,24 @@ func (m MyHours) renderHelp(width, _ int) string {
 			// global keys
 			{
 				key.NewBinding(key.WithHelp("", "Global:"), key.WithKeys("")),
-				m.keys.switchGlobalCategory,
-				m.keys.nextTab,
-				m.keys.prevTab,
-				m.keys.quit,
-				m.keys.closeHelp,
+				keys.switchGlobalCategory,
+				keys.nextTab,
+				keys.prevTab,
+				keys.quit,
+				keys.closeHelp,
 			},
 			// view specific keys
 			{
 				// timer view keys
 				key.NewBinding(key.WithHelp("", "Timer:"), key.WithKeys("")),
-				m.keys.toggleTaskTimer,
-				m.keys.switchTaskCategory,
+				keys.startRecord,
+				keys.newRecord,
+				keys.switchTaskCategory,
 				key.NewBinding(key.WithHelp("", ""), key.WithKeys("")),
 				key.NewBinding(key.WithHelp("", "Reports:"), key.WithKeys("")),
 				// reporting keys
-				m.keys.prevReportPage,
-				m.keys.nextReportPage,
+				keys.prevReportPage,
+				keys.nextReportPage,
 			},
 		}),
 	)
@@ -91,6 +94,13 @@ func (m MyHours) renderHelp(width, _ int) string {
 // telling what to press to see the actual help.
 func (m MyHours) renderHelpHint() string {
 	return m.help.ShortHelpView([]key.Binding{m.keys.openHelp})
+}
+
+// renderShortHelp renders the short help for a view.
+func (m MyHours) renderShortHelp(width int, keys ...key.Binding) string {
+	h := help.New()
+	h.Styles = styleHelp
+	return styleShortHelp.Width(width).Render(h.ShortHelpView(keys))
 }
 
 // renderNavigation renders the navigation bar at the bottom of the screen.
@@ -154,11 +164,19 @@ func (m MyHours) renderTimer(width, _ int) string {
 	started := m.timer.started()
 	// we also show the category assigned to the task. If a task ID exists, this
 	// still allows swapping the category for it.
-	cat := findCategory(m.categories, m.state.timerCategoryID)
+	cat := findCategory(m.categories, m.state.activeRecord.CategoryID)
 	// now we build the actual view.
 	var doc strings.Builder
 	doc.WriteString(styleTimerLabel.Render("Tracking:"))
 	doc.WriteString(lipgloss.NewStyle().Foreground(cat.ForegroundColor()).Render(cat.Name))
+	// display the active/previous ID, depending on which is found. If there's
+	// an active record ID, then a record is running right now.
+	// If only previous record ID set, then a record was made, but stopped.
+	if m.state.activeRecord.ID > 0 {
+		doc.WriteString(" (id: ")
+		doc.WriteString(strconv.FormatInt(m.state.activeRecord.ID, 10))
+		doc.WriteString(")")
+	}
 	doc.WriteString("\n")
 	doc.WriteString(styleTimerLabel.Render("Elapsed:"))
 	doc.WriteString(elapsed)
@@ -169,19 +187,13 @@ func (m MyHours) renderTimer(width, _ int) string {
 		doc.WriteString(started.Format(time.DateTime))
 	}
 	doc.WriteString("\n")
-	doc.WriteString(styleTimerLabel.Render("RecordNo:"))
-	// display the active/previous ID, depending on which is found. If there's
-	// an active record ID, then a record is running right now.
-	// If only previous record ID set, then a record was made, but stopped.
-	switch {
-	case m.state.activeRecordID > 0:
-		doc.WriteString(strconv.FormatInt(m.state.activeRecordID, 10))
-	case m.state.previousRecordID > 0:
-		doc.WriteString(strconv.FormatInt(m.state.previousRecordID, 10))
-	}
 	// Form the container style and render the document into it.
 	style := styleTimerContainer.Width(w).BorderForeground(cat.ForegroundColor())
-	return style.Render(doc.String())
+	var box strings.Builder
+	box.WriteString(style.Render(doc.String()))
+	box.WriteString("\n")
+	box.WriteString(m.renderShortHelp(width, m.keys.newRecord, m.keys.startRecord, m.keys.stopRecord))
+	return box.String()
 }
 
 // renderReport builds a report of how time has been spent for some time window
@@ -194,7 +206,7 @@ func (m MyHours) renderReport(width, height int) string {
 	var (
 		// We have to calculate some dimensions for the table to make it fit a bit
 		// better and ensure it's getting clipped correctly if needed.
-		container   = styleReportContainer.Width(width).Height(height)
+		container   = styleReportContainer.Width(width)
 		tableWidth  = width - container.GetHorizontalFrameSize()
 		tableHeight = height - container.GetVerticalFrameSize()
 		// select currently active category, we'll render it also on top of the table.
@@ -219,6 +231,8 @@ func (m MyHours) renderReport(width, height int) string {
 	doc.WriteString(styleReportTitle.Render(title.String()))
 	doc.WriteString("\n")
 	doc.WriteString(tbl.Render())
+	doc.WriteString("\n")
+	doc.WriteString(m.renderShortHelp(width, m.keys.prevReportPage, m.keys.nextReportPage))
 	return container.Render(doc.String())
 }
 

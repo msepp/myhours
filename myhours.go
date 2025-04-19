@@ -54,6 +54,19 @@ func New(db Database, options ...Option) MyHours {
 			"Year",
 		},
 	}
+	// disable all keys by default (except quite). They'll be enabled once app
+	// is ready.
+	app.keys.switchGlobalCategory.SetEnabled(false)
+	app.keys.switchTaskCategory.SetEnabled(false)
+	app.keys.nextTab.SetEnabled(false)
+	app.keys.prevTab.SetEnabled(false)
+	app.keys.prevReportPage.SetEnabled(false)
+	app.keys.nextReportPage.SetEnabled(false)
+	app.keys.startRecord.SetEnabled(false)
+	app.keys.stopRecord.SetEnabled(false)
+	app.keys.newRecord.SetEnabled(false)
+	app.keys.openHelp.SetEnabled(false)
+	app.keys.closeHelp.SetEnabled(false)
 	// apply options to customize the application.
 	for _, opt := range options {
 		opt(&app)
@@ -62,17 +75,15 @@ func New(db Database, options ...Option) MyHours {
 }
 
 type state struct {
-	screenWidth      int
-	screenHeight     int
-	viewWidth        int
-	viewHeight       int
-	activeView       int
-	timerCategoryID  int64
-	activeRecordID   int64
-	previousRecordID int64
-	showHelp         bool
-	ready            bool
-	quitting         bool
+	screenWidth  int
+	screenHeight int
+	viewWidth    int
+	viewHeight   int
+	activeView   int
+	activeRecord Record
+	showHelp     bool
+	ready        bool
+	quitting     bool
 	// reporting data fields
 	reportLoading bool
 	reportPage    []int

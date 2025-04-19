@@ -20,6 +20,8 @@ type Database interface {
 	//
 	// If none is active, both return values are nil.
 	ActiveRecord() (*Record, error)
+	// Record returns a single Record matching given ID.
+	Record(recordID int64) (*Record, error)
 	// Records returns all records that fit into the given timespan.
 	// Records where starting time is equal or greater to from, and less than before,
 	// are returned.
@@ -36,11 +38,8 @@ type Database interface {
 	//
 	// On success returns the new record IDs
 	StartRecord(start time.Time, categoryID int64, notes string) (int64, error)
-	// UpdateRecordCategory to category identified by categoryID for record identified by recordID.
-	UpdateRecordCategory(recordID int64, categoryID int64) error
-	// FinishRecord identified by recordID by setting the end time details and
-	// adding optional notes.
-	FinishRecord(recordID int64, start, end time.Time, notes string) error
+	// UpdateRecord details for record identified by record ID.
+	UpdateRecord(recordID int64, categoryID int64, from, end time.Time, notes string) error
 	// Categories returns all available categories.
 	Categories() ([]Category, error)
 	// UpdateSetting updates a configuration setting value identified by key.

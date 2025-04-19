@@ -34,12 +34,16 @@ func (m timer) update(message tea.Msg) (timer, tea.Cmd) {
 		m.t1 = msg.end
 		m.running = false
 		return m, nil
+	case timerResetMsg:
+		m.t0 = time.Time{}
+		m.t1 = m.t0
+		m.running = false
 	case timerTickMsg:
 		if !m.running {
 			return m, nil
 		}
 		// If a tag is set, and it's not the one we expect, reject the message.
-		// This prevents the stopwatch from receiving too many messages and
+		// This prevents the timer from receiving too many messages and
 		// thus ticking too fast.
 		if msg.tag > 0 && msg.tag != m.tag {
 			return m, nil
@@ -62,28 +66,35 @@ func (m timer) view() string {
 	}
 }
 
-// startFrom sets the starting time for the stopwatch to given time.Time.
+// startFrom sets the starting time for the timer to given time.Time.
 func (m timer) startFrom(t time.Time) tea.Cmd {
 	return tea.Sequence(func() tea.Msg {
 		return timerStartMsg{from: t}
 	}, timerTick(m.tag, m.interval))
 }
 
-// start starts the stopwatch, counting from now.
+// start starts the timer, counting from now.
 func (m timer) start() tea.Cmd {
 	return tea.Sequence(func() tea.Msg {
 		return timerStartMsg{from: time.Now()}
 	}, timerTick(m.tag, m.interval))
 }
 
-// stop stops the stopwatch.
+// stop stops the timer.
 func (m timer) stop() tea.Cmd {
 	return func() tea.Msg {
 		return timerStopMsg{m.t0, time.Now()}
 	}
 }
 
-// started returns the starting time of the stopwatch
+// reset the timer.
+func (m timer) reset() tea.Cmd {
+	return func() tea.Msg {
+		return timerResetMsg{}
+	}
+}
+
+// started returns the starting time of the timer
 func (m timer) started() time.Time {
 	return m.t0
 }

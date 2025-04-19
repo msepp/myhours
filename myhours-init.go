@@ -42,9 +42,9 @@ func (m MyHours) Init() tea.Cmd {
 			}
 			if record == nil {
 				m.l.Info("no active record")
-				return initTimerMsg{recordID: 0}
+				return initTimerMsg{record: Record{CategoryID: 0}}
 			}
-			return initTimerMsg{recordID: record.ID, since: record.Start, category: record.CategoryID}
+			return initTimerMsg{record: *record}
 		},
 	}
 	return tea.Sequence(commands...)

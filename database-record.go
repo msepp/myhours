@@ -20,9 +20,14 @@ type Record struct {
 	Notes string
 }
 
-// Finished returns if the record has been finished
+// Finished returns if the record has been finished.
 func (r Record) Finished() bool {
 	return !r.End.IsZero()
+}
+
+// Active returns if the record has been started and isn't yet finished.
+func (r Record) Active() bool {
+	return !r.Start.IsZero() && !r.Finished()
 }
 
 // Duration of the record. If Start or End is zero, return value is zero.

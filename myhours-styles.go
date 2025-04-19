@@ -28,7 +28,8 @@ var (
 		FullDesc:       lipgloss.NewStyle().Foreground(lipgloss.AdaptiveColor{Light: "238", Dark: "250"}),
 		FullSeparator:  lipgloss.NewStyle().Foreground(navColorFGInactive),
 	}
+	styleShortHelp       = lipgloss.NewStyle().Align(lipgloss.Center)
 	styleTimerContainer  = lipgloss.NewStyle().Border(lipgloss.DoubleBorder()).Padding(1, 2)
-	styleReportContainer = lipgloss.NewStyle().Padding(1, 0, 0, 0)
+	styleReportContainer = lipgloss.NewStyle().Padding(1, 1, 0, 1)
 	styleReportTitle     = lipgloss.NewStyle().Margin(0, 2)
 )

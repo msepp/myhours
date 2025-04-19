@@ -12,25 +12,14 @@ type updateSettingsMsg struct {
 	settings Settings
 }
 
-// timerCategoryMsg update the category of timer.
-type timerCategoryMsg struct {
-	categoryID int64
-}
-
-type recordStartMsg struct {
-	recordID   int64
-	categoryID int64
-}
-
-type recordFinishMsg struct {
-	recordID int64
+// updateRecordMsg updates record data
+type updateRecordMsg struct {
+	record Record
 }
 
 // initTimerMsg is sent to select the initial active task
 type initTimerMsg struct {
-	recordID int64
-	since    time.Time
-	category int64
+	record Record
 }
 
 // reportDataMessage contains data for reporting table.
@@ -62,3 +51,6 @@ type timerStopMsg struct {
 	start time.Time
 	end   time.Time
 }
+
+// timerResetMsg resets the timer
+type timerResetMsg struct{}

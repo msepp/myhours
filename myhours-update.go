@@ -53,10 +53,14 @@ func (m MyHours) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 		// timer has been initialized. If init contains details for a record, set
 		// that record as the active one and start the timer running from record
 		// starting timestamp.
-		if msg.recordID > 0 {
-			m.state.timerCategoryID = msg.category
-			m.state.activeRecordID = msg.recordID
-			commands = append(commands, m.timer.startFrom(msg.since))
+		m.state.activeRecord = msg.record
+		// if the record has no valid category, set to what ever is the default
+		if m.state.activeRecord.CategoryID == 0 {
+			m.state.activeRecord.CategoryID = m.settings.DefaultCategoryID
+		}
+		// if the record is supposed to be active, we must start timer.
+		if m.state.activeRecord.Active() {
+			commands = append(commands, m.timer.startFrom(m.state.activeRecord.Start))
 		}
 		// enable keys for default view now that everything should be ready.
 		m.keys.openHelp.SetEnabled(true)
@@ -64,11 +68,10 @@ func (m MyHours) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 		m.keys.prevTab.SetEnabled(true)
 		m.keys.switchGlobalCategory.SetEnabled(true)
 		m.keys.switchTaskCategory.SetEnabled(true)
-		m.keys.toggleTaskTimer.SetEnabled(true)
+		m.keys.stopRecord.SetEnabled(m.state.activeRecord.Active())
+		m.keys.startRecord.SetEnabled(!m.state.activeRecord.Active())
+		m.keys.newRecord.SetEnabled(!m.state.activeRecord.Active())
 		m.state.ready = true
-	case timerCategoryMsg:
-		// timer category has been changed.
-		m.state.timerCategoryID = msg.categoryID
 	case updateCategoriesMsg:
 		// details for available categories has changed. This pretty much happens
 		// only at app init (for now)
@@ -81,37 +84,44 @@ func (m MyHours) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 		m.settings = msg.settings
 		// If there's no details for active record, let's swap the task category
 		// as well as convenience.
-		if m.state.activeRecordID == 0 || m.state.previousRecordID == 0 {
-			m.state.timerCategoryID = msg.settings.DefaultCategoryID
+		if m.state.activeRecord.ID == 0 {
+			m.state.activeRecord.CategoryID = msg.settings.DefaultCategoryID
 		}
 		// we must request update of report data, since category affects what is
 		// show in the tables. If there's a need to load new stuff, cmd is non-nil.
 		if cmd := m.updateReportData(); cmd != nil {
 			commands = append(commands, cmd)
 		}
-	case recordStartMsg:
-		// new record has been created, i.e. the timer has been started and a
-		// new record was created into database. Update the details into state.
-		m.state.activeRecordID = msg.recordID
-		m.state.timerCategoryID = msg.categoryID
-	case recordFinishMsg:
-		// record has been finished, i.e. timer was stopped and record details
-		// were written to database.
-		m.state.previousRecordID = msg.recordID
-		m.state.activeRecordID = 0
+	case updateRecordMsg:
+		// Record status had been updated.
+		m.state.activeRecord = msg.record
+		// while record is active, can't start new one.
+		m.keys.newRecord.SetEnabled(!m.state.activeRecord.Active())
+		m.keys.startRecord.SetEnabled(!m.state.activeRecord.Active())
+		m.keys.stopRecord.SetEnabled(m.state.activeRecord.Active())
 	case timerStartMsg:
 		// timer has started. start a new record in database with the starting
-		// timestamp of the timer. But only allow it when there's no active record
-		// already.
-		if m.state.activeRecordID == 0 {
-			commands = append(commands, m.startNewRecord(msg.from, m.state.timerCategoryID))
+		// timestamp of the timer. But only allow it when the task has no ID yet.
+		if m.state.activeRecord.ID == 0 {
+			commands = append(commands, m.startNewRecord(msg.from, m.state.activeRecord.CategoryID))
+		} else {
+			record := m.state.activeRecord
+			record.End = time.Time{}
+			commands = append(commands, m.updateRecord(record))
 		}
 	case timerStopMsg:
 		// timer has been stopped, we need to finish the currently active record
 		// in database with the start/end times recorded by the timer.
-		if m.state.activeRecordID > 0 {
-			commands = append(commands, m.finishActiveRecord(msg.start, msg.end))
+		if !m.state.activeRecord.Finished() {
+			record := m.state.activeRecord
+			record.Start = msg.start
+			record.End = msg.end
+			commands = append(commands, m.updateRecord(record))
 		}
+	case timerResetMsg:
+		// on timer reset, we reset the record as well.
+		record := Record{CategoryID: m.state.activeRecord.CategoryID}
+		commands = append(commands, m.updateRecord(record))
 	case tea.WindowSizeMsg:
 		// window size has changed. Calculate the dimensions of the view usable
 		// area after all window dressing. This is used to contain the contents
@@ -127,8 +137,9 @@ func (m MyHours) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 		// database operations into asynchronous functions.
 		switch {
 		case key.Matches(msg, m.keys.switchTaskCategory):
-			next := nextCategoryID(m.categories, m.state.timerCategoryID)
-			commands = append(commands, m.updateTimerCategoryID(next))
+			record := m.state.activeRecord
+			record.CategoryID = nextCategoryID(m.categories, record.CategoryID)
+			commands = append(commands, m.updateRecord(record))
 		case key.Matches(msg, m.keys.switchGlobalCategory):
 			// switching the global category is based on stored default category
 			// setting.
@@ -191,13 +202,20 @@ func (m MyHours) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 				m.state.reportLoading = true
 				commands = append(commands, cmd)
 			}
-		case key.Matches(msg, m.keys.toggleTaskTimer):
-			// timer start/stop requested. Issue timer start or stop based on
-			// what the timers current running state is.
-			if m.timer.running {
+		case key.Matches(msg, m.keys.startRecord, m.keys.stopRecord):
+			// timer start/stop requested. start or stop based on the current
+			// record status
+			switch {
+			case m.state.activeRecord.Active():
 				commands = append(commands, m.timer.stop())
-			} else {
+			case m.state.activeRecord.Finished():
+				commands = append(commands, m.timer.startFrom(m.state.activeRecord.Start))
+			default:
 				commands = append(commands, m.timer.start())
+			}
+		case key.Matches(msg, m.keys.newRecord):
+			if !m.state.activeRecord.Active() {
+				commands = append(commands, m.timer.reset())
 			}
 		case key.Matches(msg, m.keys.quit):
 			m.state.quitting = true
@@ -223,29 +241,24 @@ func (m MyHours) startNewRecord(start time.Time, categoryID int64) tea.Cmd {
 			m.l.Error("failed to store new record", slog.String("error", err.Error()))
 			return tea.Quit()
 		}
-		return recordStartMsg{recordID: id, categoryID: categoryID}
-	}
-}
-
-func (m MyHours) finishActiveRecord(start, end time.Time) tea.Cmd {
-	return func() tea.Msg {
-		if err := m.db.FinishRecord(m.state.activeRecordID, start, end, ""); err != nil {
-			m.l.Error("failed to update record", slog.String("error", err.Error()))
+		var record *Record
+		if record, err = m.db.Record(id); err != nil {
+			m.l.Error("failed to load record", slog.String("error", err.Error()))
 			return tea.Quit()
 		}
-		return recordFinishMsg{recordID: m.state.activeRecordID}
+		return updateRecordMsg{record: *record}
 	}
 }
 
-func (m MyHours) updateTimerCategoryID(id int64) tea.Cmd {
+func (m MyHours) updateRecord(record Record) tea.Cmd {
 	return func() tea.Msg {
-		if m.state.activeRecordID > 0 {
-			if err := m.db.UpdateRecordCategory(m.state.activeRecordID, id); err != nil {
+		if record.ID > 0 {
+			if err := m.db.UpdateRecord(record.ID, record.CategoryID, record.Start, record.End, record.Notes); err != nil {
 				m.l.Error("failed to update active record category", slog.String("error", err.Error()))
 				return tea.Quit()
 			}
 		}
-		return timerCategoryMsg{categoryID: id}
+		return updateRecordMsg{record: record}
 	}
 }
 

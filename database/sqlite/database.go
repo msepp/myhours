@@ -25,13 +25,13 @@ var defaultDB []byte
 const (
 	selectFullRecord       = `SELECT "id", "start", "end", "category", "notes" FROM records`
 	queryActiveRecord      = selectFullRecord + ` WHERE "end" IS NULL ORDER BY id DESC LIMIT 1`
+	queryRecord            = selectFullRecord + ` WHERE "id" = $1`
 	queryRecords           = selectFullRecord + ` WHERE "start" > $1 AND "end" < $2 ORDER BY start ASC`
 	queryRecordsOfCategory = selectFullRecord + ` WHERE "start" > $1 AND "end" < $2 AND "category" = $3 ORDER BY start ASC`
 	queryCategories        = `SELECT "id", "name", "color_dark_bg", "color_dark_fg", "color_light_bg", "color_light_fg" FROM categories ORDER BY "id" ASC`
 	insertFullRecord       = `INSERT INTO records ("start", "end", "category", "notes") VALUES ($1, $2, $3, $4) RETURNING id`
-	insertActiveRecord     = `INSERT INTO records ("start", "category", "notes") VALUES ($1, $2, $3) RETURNING id`
-	updateRecordCategory   = `UPDATE records SET "category" = $2 WHERE "id" = $1`
-	updateRecordAsFinished = `UPDATE records SET "start" = $2, "end" = $3, "notes" = $4 WHERE "id" = $1`
+	insertActiveRecord     = `INSERT INTO records ("start", "category", "notes") VALUES ($1, $2, $3) RETURNING "id"`
+	updateRecord           = `UPDATE records SET "category" = $2, "start" = $3, "end" = $4, "notes" = $5 WHERE "id" = $1`
 	queryConfigSettings    = `SELECT "key", "value" FROM configuration`
 	updateConfigSetting    = `UPDATE configuration SET "value" = $2 WHERE "key" = $1`
 )
@@ -42,7 +42,7 @@ type SQLite struct {
 	l  *slog.Logger
 }
 
-// ActiveRecord implements myhours.Database ActiveRecord on top of SQLite
+// ActiveRecord finds the first myhours.Record from database that has no end time set yet.
 func (db *SQLite) ActiveRecord() (*myhours.Record, error) {
 	res := db.db.QueryRow(queryActiveRecord)
 	record, err := scanRecord(res)
@@ -55,7 +55,20 @@ func (db *SQLite) ActiveRecord() (*myhours.Record, error) {
 	return record, nil
 }
 
-// Records implements myhours.Database Records on top of SQLite
+// Record retrieves a myhours.Record matching given ID.
+func (db *SQLite) Record(id int64) (*myhours.Record, error) {
+	res := db.db.QueryRow(queryRecord, id)
+	record, err := scanRecord(res)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, nil
+		}
+		return nil, fmt.Errorf("scanDBRecordRow: %w", err)
+	}
+	return record, nil
+}
+
+// Records retrieves records for given timestamps [from, before).
 func (db *SQLite) Records(from, before time.Time) ([]myhours.Record, error) {
 	res, err := db.db.Query(queryRecords, from.In(time.UTC).Format(time.RFC3339Nano), before.In(time.UTC).Format(time.RFC3339Nano))
 	if err != nil {
@@ -74,7 +87,8 @@ func (db *SQLite) Records(from, before time.Time) ([]myhours.Record, error) {
 	return records, nil
 }
 
-// RecordsInCategory implements myhours.Database RecordsInCategory on top of SQLite
+// RecordsInCategory  retrieves records for given timestamps [from, before) that
+// have the given category.
 func (db *SQLite) RecordsInCategory(from, before time.Time, categoryID int64) ([]myhours.Record, error) {
 	res, err := db.db.Query(queryRecordsOfCategory, from.In(time.UTC).Format(time.RFC3339Nano), before.In(time.UTC).Format(time.RFC3339Nano), categoryID)
 	if err != nil {
@@ -93,7 +107,8 @@ func (db *SQLite) RecordsInCategory(from, before time.Time, categoryID int64) ([
 	return records, nil
 }
 
-// ImportRecords implements Database.ImportRecords on top of SQLite.
+// ImportRecords inserts the given records into the database. All records are
+// validated before insert.
 //
 // Inserts are done in a transaction, so the result is all or nothing.
 //
@@ -142,6 +157,8 @@ func (db *SQLite) ImportRecords(records []myhours.Record) ([]int64, error) {
 	return results, nil
 }
 
+// StartRecord inserts a new myhours.Record into the database, setting only the
+// start time to indicate the record is started, but not finished.
 func (db *SQLite) StartRecord(start time.Time, categoryID int64, notes string) (int64, error) {
 	active, err := db.ActiveRecord()
 	if err != nil {
@@ -161,26 +178,19 @@ func (db *SQLite) StartRecord(start time.Time, categoryID int64, notes string) (
 	return id, nil
 }
 
-func (db *SQLite) UpdateRecordCategory(recordID int64, categoryID int64) error {
-	if _, err := db.db.Exec(updateRecordCategory, recordID, categoryID); err != nil {
+// UpdateRecord sets record details for the record matching recordID.
+func (db *SQLite) UpdateRecord(recordID int64, categoryID int64, start, end time.Time, notes string) error {
+	var endPtr *string
+	if !end.IsZero() {
+		endPtr = ptrNonZero(end.In(time.UTC).Format(time.RFC3339Nano))
+	}
+	if _, err := db.db.Exec(updateRecord, recordID, categoryID, start.In(time.UTC).Format(time.RFC3339Nano), endPtr, ptrNonZero(notes)); err != nil {
 		return fmt.Errorf("db.Exec: %w", err)
 	}
 	return nil
 }
 
-func (db *SQLite) FinishRecord(recordID int64, start, end time.Time, notes string) error {
-	_, err := db.db.Exec(updateRecordAsFinished,
-		recordID,
-		start.In(time.UTC).Format(time.RFC3339Nano),
-		end.In(time.UTC).Format(time.RFC3339Nano),
-		ptrNonZero(notes),
-	)
-	if err != nil {
-		return fmt.Errorf("db.Exec: %w", err)
-	}
-	return nil
-}
-
+// Categories returns all myhours.Category entries.
 func (db *SQLite) Categories() ([]myhours.Category, error) {
 	rows, err := db.db.Query(queryCategories)
 	if err != nil {
@@ -198,6 +208,7 @@ func (db *SQLite) Categories() ([]myhours.Category, error) {
 	return result, nil
 }
 
+// UpdateSetting sets value of a setting identified by key.
 func (db *SQLite) UpdateSetting(key myhours.Setting, value string) error {
 	if _, err := db.db.Exec(updateConfigSetting, key.String(), value); err != nil {
 		return fmt.Errorf("db.Exec: %w", err)
@@ -205,6 +216,7 @@ func (db *SQLite) UpdateSetting(key myhours.Setting, value string) error {
 	return nil
 }
 
+// Settings returns the full application settings.
 func (db *SQLite) Settings() (*myhours.Settings, error) {
 	rows, err := db.db.Query(queryConfigSettings)
 	if err != nil {
