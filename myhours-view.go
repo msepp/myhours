@@ -184,7 +184,7 @@ func (m MyHours) renderTimer(width, _ int) string {
 	doc.WriteString(styleTimerLabel.Render("Started:"))
 	// if task started is zero, we'll just omit the detail nothing is/has been running.
 	if !started.IsZero() {
-		doc.WriteString(started.Format(time.DateTime))
+		doc.WriteString(started.Format(time.DateTime + " -0700"))
 	}
 	doc.WriteString("\n")
 	// Form the container style and render the document into it.

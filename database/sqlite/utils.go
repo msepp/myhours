@@ -44,10 +44,12 @@ func scanRecord(row scanner) (*myhours.Record, error) {
 	if record.Start, err = time.Parse(time.RFC3339Nano, start); err != nil {
 		return nil, fmt.Errorf("time.Parse(start): %w", err)
 	}
+	record.Start = record.Start.In(time.Local)
 	if end != nil {
 		if record.End, err = time.Parse(time.RFC3339Nano, *end); err != nil {
 			return nil, fmt.Errorf("time.Parse(end): %w", err)
 		}
+		record.End = record.End.In(time.Local)
 	}
 	return &record, nil
 }
