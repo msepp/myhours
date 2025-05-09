@@ -87,10 +87,11 @@ type dailySummary struct {
 }
 
 type weeklySummary struct {
-	year   int
-	weekNo int
-	total  time.Duration
-	days   []dailySummary
+	year     int
+	weekNo   int
+	startsOn time.Weekday
+	total    time.Duration
+	days     []dailySummary
 }
 
 func (s weeklySummary) dateRange() (string, string) {
@@ -118,7 +119,7 @@ func newWeeklySummary(records []Record) []weeklySummary {
 		}
 		wd--
 		if cw == nil || cw.year != y || cw.weekNo != weekNo {
-			weeks = append(weeks, weeklySummary{year: y, weekNo: weekNo})
+			weeks = append(weeks, weeklySummary{year: y, weekNo: weekNo, startsOn: time.Monday})
 			cw = &weeks[len(weeks)-1]
 			// seed the days of the week to get a full week.
 			for i := range 7 {

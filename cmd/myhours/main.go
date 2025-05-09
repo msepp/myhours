@@ -110,7 +110,7 @@ func main() {
 	logger.Debug("database initialized", slog.String("database", dbFile))
 	// Run the application with given database
 	mh := myhours.New(db, myhours.UseLogger(logger))
-	if _, err = tea.NewProgram(mh /*, tea.WithAltScreen()*/).Run(); err != nil {
+	if _, err = tea.NewProgram(mh, tea.WithAltScreen()).Run(); err != nil {
 		logger.Error("run error", slog.String("error", err.Error()))
 		os.Exit(1)
 	}

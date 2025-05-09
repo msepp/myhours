@@ -119,8 +119,9 @@ func newMonthlySummary(records []Record) []monthlySummary {
 				if _, weekNo := first.ISOWeek(); prevWeekNo < weekNo {
 					prevWeekNo = weekNo
 					wr := weeklySummary{
-						year:   y,
-						weekNo: weekNo,
+						year:     y,
+						weekNo:   weekNo,
+						startsOn: first.Weekday(),
 					}
 					// seed the days of the week to get a full week.
 					dd := first
@@ -166,7 +167,11 @@ func newMonthlySummary(records []Record) []monthlySummary {
 		if wd == 0 {
 			wd = 7
 		}
-		wd--
+		if cw.startsOn == time.Sunday {
+			wd = -7
+		} else {
+			wd -= cw.startsOn
+		}
 		cw.days[wd].total += d
 		if record.Notes != "" {
 			cw.days[wd].notes = append(cw.days[wd].notes, record.Notes)
