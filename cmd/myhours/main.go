@@ -31,6 +31,7 @@ func main() {
 		silent     bool
 		importFile = "import.txt"
 		dbLocation = path.Join(configDir, "my-hours-cli")
+		logDest    = "-"
 		dbFile     = path.Join(dbLocation, "database.db")
 	)
 	flag.StringVar(&dbFile, "db", dbFile, "Database location")
@@ -38,13 +39,21 @@ func main() {
 	flag.StringVar(&importFile, "importFile", importFile, "File with import data. Must contain lines in format '2006-01-02T15:04:05.999999999Z07:00,<duration>,categoryInt,notes'. Notes can not contain newlines.")
 	flag.BoolVar(&verbose, "v", false, "Verbose output")
 	flag.BoolVar(&silent, "s", false, "Silence all log output")
+	flag.StringVar(&logDest, "log", logDest, "Log file destination. Use '-' for stderr")
 	flag.Parse()
 
 	if !silent {
+		lwr := os.Stderr
+		if logDest != "-" {
+			if lwr, err = os.OpenFile(logDest, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0600); err != nil {
+				_, _ = fmt.Fprintf(os.Stderr, "failed to open log destination: %v\n", err)
+				return
+			}
+		}
 		if verbose {
-			logger = slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelDebug, AddSource: true}))
+			logger = slog.New(slog.NewTextHandler(lwr, &slog.HandlerOptions{Level: slog.LevelDebug, AddSource: true}))
 		} else {
-			logger = slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelInfo}))
+			logger = slog.New(slog.NewTextHandler(lwr, &slog.HandlerOptions{Level: slog.LevelInfo}))
 		}
 	}
 	logger.Debug("opening database", slog.String("database", dbFile))
@@ -110,7 +119,7 @@ func main() {
 	logger.Debug("database initialized", slog.String("database", dbFile))
 	// Run the application with given database
 	mh := myhours.New(db, myhours.UseLogger(logger))
-	if _, err = tea.NewProgram(mh, tea.WithAltScreen()).Run(); err != nil {
+	if _, err = tea.NewProgram(mh).Run(); err != nil {
 		logger.Error("run error", slog.String("error", err.Error()))
 		os.Exit(1)
 	}

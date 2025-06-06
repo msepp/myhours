@@ -15,7 +15,7 @@ var (
 	styleNavJoiner     = lipgloss.NewStyle().Background(navColorBG).Foreground(navColorFGInactive)
 	styleNavInactive   = lipgloss.NewStyle().Background(navColorBG).Foreground(navColorFGInactive).Padding(0, 1)
 	styleNavActive     = lipgloss.NewStyle().Background(navColorBG).Foreground(navColorFGActive).Padding(0, 1)
-	styleWindow        = lipgloss.NewStyle().Padding(0, 0, 0, 0).Margin(0, 0).Align(lipgloss.Center, lipgloss.Center)
+	styleWindow        = lipgloss.NewStyle().Border(lipgloss.ASCIIBorder(), false).Padding(0, 0, 0, 0).Margin(0, 0).Align(lipgloss.Center, lipgloss.Bottom)
 	styleTimerLabel    = lipgloss.NewStyle().Bold(true).Width(10)
 	styleTableCell     = lipgloss.NewStyle().Padding(0, 1)
 	styleTableSumRow   = styleTableCell.Background(lipgloss.AdaptiveColor{Dark: "235", Light: "250"}).Foreground(lipgloss.AdaptiveColor{Dark: "195", Light: "20"})

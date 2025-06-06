@@ -126,16 +126,23 @@ func (m MyHours) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 		// window size has changed. Calculate the dimensions of the view usable
 		// area after all window dressing. This is used to contain the contents
 		// when rending views like reports.
+		m.state.viewWidth = msg.Width - styleWindow.GetHorizontalFrameSize()
+		m.state.viewHeight = msg.Height - styleWindow.GetVerticalFrameSize() - 1
 		m.state.screenWidth = msg.Width
 		m.state.screenHeight = msg.Height
-		m.state.viewWidth = msg.Width - styleWindow.GetHorizontalFrameSize()
-		m.state.viewHeight = msg.Height - styleWindow.GetVerticalFrameSize() - 2
 	case tea.KeyMsg:
 		// some keypress event has happened. We try to avoid doing direct state
 		// manipulation here and instead just trigger the side effects that we
 		// want. This should keep the update method faster, offloading things like
 		// database operations into asynchronous functions.
 		switch {
+		case key.Matches(msg, m.keys.fullScreen):
+			if m.state.altScreen {
+				commands = append(commands, tea.ExitAltScreen)
+			} else {
+				commands = append(commands, tea.EnterAltScreen)
+			}
+			m.state.altScreen = !m.state.altScreen
 		case key.Matches(msg, m.keys.switchTaskCategory):
 			record := m.state.activeRecord
 			record.CategoryID = nextCategoryID(m.categories, record.CategoryID)

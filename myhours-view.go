@@ -71,6 +71,7 @@ func (m MyHours) renderHelp(width, _ int) string {
 				keys.nextTab,
 				keys.prevTab,
 				keys.quit,
+				keys.fullScreen,
 				keys.closeHelp,
 			},
 			// view specific keys
@@ -144,12 +145,13 @@ func (m MyHours) renderWithNavigation(render renderer) string {
 	viewHeight, viewWidth := m.state.viewHeight, m.state.viewWidth
 	nav := m.renderNavigation()
 	_, navHeight := lipgloss.Size(nav)
-	viewHeight -= navHeight - 2 // and couple newlines
+	contentHeight := viewHeight - navHeight + 1
 	doc := strings.Builder{}
-	doc.WriteString(lipgloss.Place(viewWidth, viewHeight, lipgloss.Center, lipgloss.Center, render(viewWidth, viewHeight)))
+	doc.WriteString(lipgloss.Place(viewWidth, contentHeight, lipgloss.Center, lipgloss.Center, render(viewWidth, viewHeight)))
 	doc.WriteString("\n")
-	doc.WriteString(lipgloss.Place(viewWidth, navHeight, lipgloss.Center, lipgloss.Center, nav+" "+m.renderHelpHint()))
-	return styleWindow.Render(doc.String())
+	doc.WriteString(lipgloss.Place(viewWidth, navHeight, lipgloss.Center, lipgloss.Bottom, nav+" "+m.renderHelpHint()))
+	out := styleWindow.Height(m.state.viewHeight).Width(m.state.viewWidth).Render(doc.String())
+	return out
 }
 
 func (m MyHours) renderTimer(width, _ int) string {

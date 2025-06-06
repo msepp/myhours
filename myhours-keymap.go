@@ -18,10 +18,15 @@ type keymap struct {
 	openHelp             key.Binding
 	closeHelp            key.Binding
 	quit                 key.Binding
+	fullScreen           key.Binding
 }
 
 func newKeymap() keymap {
 	return keymap{
+		fullScreen: key.NewBinding(
+			key.WithKeys(tea.KeyF2.String()),
+			key.WithHelp("f2", "toggle fullscreen"),
+		),
 		openHelp: key.NewBinding(
 			key.WithKeys(tea.KeyF1.String()),
 			key.WithHelp("f1", "Help"),

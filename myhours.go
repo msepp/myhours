@@ -75,6 +75,7 @@ func New(db Database, options ...Option) MyHours {
 }
 
 type state struct {
+	altScreen    bool
 	screenWidth  int
 	screenHeight int
 	viewWidth    int
