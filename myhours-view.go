@@ -180,14 +180,19 @@ func (m MyHours) renderTimer(width, _ int) string {
 		doc.WriteString(")")
 	}
 	doc.WriteString("\n")
-	doc.WriteString(styleTimerLabel.Render("Elapsed:"))
-	doc.WriteString(elapsed)
-	doc.WriteString("\n")
 	doc.WriteString(styleTimerLabel.Render("Started:"))
 	// if task started is zero, we'll just omit the detail nothing is/has been running.
 	if !started.IsZero() {
 		doc.WriteString(started.Format(time.DateTime + " -0700"))
 	}
+	doc.WriteString("\n")
+	doc.WriteString(styleTimerLabel.Render("Now:"))
+	if !started.IsZero() {
+		doc.WriteString(time.Now().Format(time.DateTime + " -0700"))
+	}
+	doc.WriteString("\n")
+	doc.WriteString(styleTimerLabel.Render("Elapsed:"))
+	doc.WriteString(elapsed)
 	doc.WriteString("\n")
 	// Form the container style and render the document into it.
 	style := styleTimerContainer.Width(w).BorderForeground(cat.ForegroundColor())

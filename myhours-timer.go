@@ -26,7 +26,7 @@ func (m timer) update(message tea.Msg) (timer, tea.Cmd) {
 		if m.running {
 			return m, nil
 		}
-		m.t0 = msg.from
+		m.t0 = msg.from.Truncate(time.Second)
 		m.running = true
 		return m, nil
 	case timerStopMsg:
